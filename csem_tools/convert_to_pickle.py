@@ -16,13 +16,15 @@ import json
 
 import argparse
 
+from parse_macromesh import parse_macromesh
+
 # parsing arguments
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--trace-dir", dest="trace_dir", help="traces files directory", type=str, default="traces")
 parser.add_argument("-o", dest="out_file", help="output file prefix", type=str, required = True)
 parser.add_argument("-r", dest="receivers_file", help="path to the receivers.dat file", type=str, default="receivers.dat")
-parser.add_argument("-m", dest="macromesh_file", help="path to the macromesh.dat file", type=str)
+parser.add_argument("-m", dest="macromesh_file", help="path to the macromesh.dat file", type=str, default="macromesh.dat")
 parser.add_argument("-rinfo", dest="recepteurs_info_file", help="path to the recepteurs.info file", type=str)
 parser.add_argument("-d", dest="dist_range", help="distance bounds in degrees", nargs=2, type=float, default=[0.0, 180.0])
 
@@ -50,62 +52,73 @@ print(f"{args.receivers_file} read.")
 # reading macromesh.dat or recepteurs.info
 
 # reading macromesh.dat or recepteurs.info
-Rt = 6371.
-dep_s,lat_s,lon_s,t0_s = 0.0,0.0,0.0,0.0
+Rt_km = 6371.
+depth_km,lat_s,lon_s,t0_s = 0.0,0.0,0.0,0.0
 
-def read_macromesh_dat(macromesh_file):
-    global dep_s, lat_s, lon_s, t0_s
-    with open(macromesh_file, "r") as io:
-        lines = io.read().splitlines()
-        i = 84
-        dep_s = Rt - float(lines[i-3])/1000
-        lat_s = 90 - float(lines[i-2]) # colatitude
-        lon_s = float(lines[i-1])
-        i = 117
-        t0_s = float(lines[i+1])
-    print("macromesh.dat read.")
+config = parse_macromesh(args.macromesh_file)
+coord  = config["source"]["coordinates"]
 
-def read_recepteurs_info(recepteurs_info_file):
-    global dep_s, lat_s, lon_s, t0_s
-    with open(recepteurs_info_file, "r") as io:
-        lines = io.read().splitlines()
-        dep_s,lat_s,lon_s = map(float, lines[5].split())
-        lat_s = 90.0 - lat_s
-        dep_s = Rt - dep_s/1000
-        t0_s = 450.0 # pas d'info sur t0
-    print("recepteurs.info read.")
+depth_km = Rt_km - coord["radius"]
+lat_s = 90. - coord["colatitude"]
+lon_s = coord["longitude"]
 
-def read_macromesh_json(macromesh_file):
-    global dep_s, lat_s, lon_s, t0_s, fmax
-    with open(macromesh_file, "r") as f:
-        data = json.load(f)
-        coords = data["source"]["coordinates"]
-        dep_s = Rt - coords["radius"]/1000.0
-        lat_s = 90. - coords["colatitude"]
-        lon_s = coords["longitude"]
-        t0_s =  data["source"]["origin_time"]
-    print("macromesh.json read.")
+t0 = config["source"]["origin_time"]
+
+
+
+# def read_macromesh_dat(macromesh_file):
+#     global depth_km, lat_s, lon_s, t0_s
+#     with open(macromesh_file, "r") as io:
+#         lines = io.read().splitlines()
+#         i = 84
+#         depth_km = Rt - float(lines[i-3])/1000
+#         lat_s = 90 - float(lines[i-2]) # colatitude
+#         lon_s = float(lines[i-1])
+#         i = 117
+#         t0_s = float(lines[i+1])
+#     print("macromesh.dat read.")
+
+# def read_recepteurs_info(recepteurs_info_file):
+#     global depth_km, lat_s, lon_s, t0_s
+#     with open(recepteurs_info_file, "r") as io:
+#         lines = io.read().splitlines()
+#         depth_km,lat_s,lon_s = map(float, lines[5].split())
+#         lat_s = 90.0 - lat_s
+#         depth_km = Rt - depth_km/1000
+#         t0_s = 450.0 # pas d'info sur t0
+#     print("recepteurs.info read.")
+
+# def read_macromesh_json(macromesh_file):
+#     global depth_km, lat_s, lon_s, t0_s, fmax
+#     with open(macromesh_file, "r") as f:
+#         data = json.load(f)
+#         coords = data["source"]["coordinates"]
+#         depth_km = Rt - coords["radius"]/1000.0
+#         lat_s = 90. - coords["colatitude"]
+#         lon_s = coords["longitude"]
+#         t0_s =  data["source"]["origin_time"]
+#     print("macromesh.json read.")
         
         
-if args.macromesh_file:
-    if os.path.splitext(args.macromesh_file)[-1] == ".dat":
-        read_macromesh_dat(args.macromesh_file)
-    else:
-        read_macromesh_json(args.macromesh_file)
+# if args.macromesh_file:
+#     if os.path.splitext(args.macromesh_file)[-1] == ".dat":
+#         read_macromesh_dat(args.macromesh_file)
+#     else:
+#         read_macromesh_json(args.macromesh_file)
 
-elif args.recepteurs_info_file:
-    read_recepteurs_info(args.recepteurs_info_file)
-elif os.path.exists("macromesh.json"):
-    read_macromesh_json("macromesh.json")
-elif os.path.exists("macromesh.dat"):
-    read_macromesh_dat("macromesh.dat")
-elif os.path.exists("recepteurs.info"):
-    read_recepteurs_info("recepteurs.info")
-else:
-    print("No file to read source coordinate found, exiting.")
-    exit()
+# elif args.recepteurs_info_file:
+#     read_recepteurs_info(args.recepteurs_info_file)
+# elif os.path.exists("macromesh.json"):
+#     read_macromesh_json("macromesh.json")
+# elif os.path.exists("macromesh.dat"):
+#     read_macromesh_dat("macromesh.dat")
+# elif os.path.exists("recepteurs.info"):
+#     read_recepteurs_info("recepteurs.info")
+# else:
+#     print("No file to read source coordinate found, exiting.")
+#     exit()
 
-print(f"Event at ({lat_s:.1f}°,{lon_s:.1f}°), {dep_s:.0f}km, t0 = {t0_s}s.")
+print(f"Event at ({lat_s:.1f}°,{lon_s:.1f}°), {depth_km:.0f}km, t0 = {t0_s}s.")
 
 # reading traces data inside Trace obspy type
 traces = []
@@ -142,7 +155,7 @@ for i,f in enumerate(files):
                 'coordinates': {'latitude':lat_r, 'longitude':lon_r},
                 'evla': lat_s,
                 'evlo': lon_s,
-                'evde': dep_s,
+                'evde': depth_km,
                 'distance': Δ,
                 'component': chan, 
                 'npts': N, 
