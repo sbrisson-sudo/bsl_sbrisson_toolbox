@@ -12,21 +12,19 @@ The azimuth is by defualt the azimuth of the station as seen from the source and
 
 # Importations
 
-import numpy as np
+import json 
 from numpy import pi, sin, cos, arccos
 
-import sys, os
+import  os
 
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 from matplotlib.transforms import blended_transform_factory
 
 
-import obspy
 from obspy.core import read
 from obspy.taup import TauPyModel
 from obspy.taup.utils import get_phase_names
-from obspy.geodetics.base import gulvz_station2dist_azimuth,locations2degrees
+from obspy.geodetics.base import locations2degrees
 
 import argparse
 
@@ -60,7 +58,6 @@ args = parser.parse_args()
 stream = read(args.in_file)
 nb_traces = stream.count()
 print(f"{stream.count()} traces loaded")
-
 
 # ++ get event information ++
 trace = stream.traces[0]
@@ -96,12 +93,8 @@ if args.phase_ref:
     model_name="prem"
     model = TauPyModel(model=model_name)
     
-    print(f"Computing phase time arrivals for model {model_name} and the following phase : {args.phase_ref}")
-    
     for tr in stream:
-        
-        dist_b = locations2degrees(lat_s,lon_s,*list(tr.stats.coordinates.values()))
-                        
+                                
         t_arr = model.get_travel_times(
             source_depth_in_km=dep_s,
             distance_in_degree=tr.stats.distance,
@@ -128,7 +121,7 @@ def get_angle(source, ulvz, station):
         ulvz    : (lat,lon) source, in degrees
         station : (lat,lon) source, in degrees
     """
-    
+        
     # compute distances between event - pivot - station
     Δsource_station = locations2degrees(*source, *station)
     Δsource_ulvz = locations2degrees(*source, *ulvz)
@@ -140,13 +133,19 @@ def get_angle(source, ulvz, station):
     return az
                 
 for tr in stream:
+        
+    station_latlon = tr.stats.coordinates["latitude"],tr.stats.coordinates["longitude"]
     
-    tr.stats.azimuth = get_angle(
+    tr.stats.azimuth = - get_angle(
         source=[lat_s,lon_s], 
         ulvz=args.ulvz, 
-        station=list(tr.stats.coordinates.values())
+        station=station_latlon
         )*1000 # because the record section plotter plot in km for data in m
-
+    
+    if tr.stats.coordinates["longitude"] < 0:
+        tr.stats.azimuth *= -1
+    
+    print(f"{station_latlon} : az = {tr.stats.azimuth}")
 # ++ select on azimuth ++
 def select_azimuth(stream, a1, a2):
     """Select traces in stream based on azimuth."""
@@ -160,7 +159,8 @@ def select_azimuth(stream, a1, a2):
 
 if args.az_range[0] or args.az_range[0]:
     az1,az2 = args.az_range
-    stream = select_azimuth(stream, az1, az2)
+    assert(az1 < az2)
+    stream = select_azimuth(stream, az1*1000, az2*1000)
     print(f"Select : {nb_traces  - stream.count()} traces removed based on azimuth criteria.")
 
 # ++ initiate plot ++
@@ -236,7 +236,7 @@ if args.plot_station_name:
     transform = blended_transform_factory(ax.transData, ax.transAxes)
     for tr in stream:
         # print(tr.stats.station, tr.stats.distance)
-        ax.text(tr.stats.azimuth/1000, 1.0, tr.stats.station, transform=transform, zorder=10, va="bottom", ha="center", fontfamily = "monospace", rotation = -45.)
+        ax.text(tr.stats.distance/1000, 1.0, tr.stats.station, transform=transform, zorder=10, va="bottom", ha="center", fontfamily = "monospace", rotation = -45.)
 
 # ++ title ++
 component_names = {
@@ -256,6 +256,13 @@ if args.out_file:
             
     print(f"Saving {args.out_file}")
     plt.savefig(args.out_file, dpi=500, bbox_inches='tight')
+    # also saving configuration
+    config_file = f"{args.out_file}.config"
+    print(f"Configuration options saved in {config_file}")
+    config_json = json.dumps(vars(args), indent = 3)
+    with open(config_file, "w") as out:
+        out.write(config_json)
+
 
 else:
     plt.show()

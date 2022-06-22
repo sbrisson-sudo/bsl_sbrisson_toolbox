@@ -67,8 +67,11 @@ class GlobalCMT_search:
         data = soup.find_all("pre")[1].text
         
         if data=="\n\n":
-            msg = "Error : no event found"
-            raise Exception(msg)
+            
+            return []
+            
+            # msg = "Error : no event found"
+            # raise Exception(msg)
                 
         # Create a temorary file to write the CMTSOLUTION data
         cmt_tmp_file = "cmt_solution.tmp"

@@ -15,6 +15,13 @@ plt.style.use("seaborn-paper")
 import os
 import sys
 
+pathdir = os.path.dirname(__file__)
+pathbase = os.path.abspath(os.path.join(pathdir, os.pardir))
+sys.path.append(pathbase)
+
+from common.setup import models_path_default
+from common.my_io import read_receivers, to_obspy_inventory
+
 from Model1D import Model1D
 from ModelA3d import ModelA3d
 import pyspl
@@ -32,7 +39,6 @@ from obspy.core.event import Catalog
 
 import pickle
 
-from common.my_io import read_receivers, to_obspy_inventory
 
 rEarth = 6371.0
 

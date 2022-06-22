@@ -14,6 +14,13 @@ import argparse
 import pickle
 import sys,os
 
+pathdir = os.path.dirname(__file__)
+pathbase = os.path.abspath(os.path.join(pathdir, os.pardir))
+sys.path.append(pathbase)
+
+from common.my_io import read_receivers
+from common.setup import models_path_default
+
 import json
 
 import numpy as np
@@ -29,6 +36,8 @@ from obspy.geodetics.base import locations2degrees
 
 import pandas as pd
 
+
+
 from Model1D import Model1D
 from ModelA3d import ModelA3d
 import pyspl
@@ -38,8 +47,8 @@ from UCBColorMaps import cmapSved, cmapXved
 import warnings
 warnings.filterwarnings('ignore')
 
-from common.my_io import read_receivers
-from common.setup import models_path_default
+
+
 
 # from FigTools import plot_plates, plot_hotspots, plot_gc_clean
 
@@ -50,6 +59,16 @@ r_earth = 6371.0
 # type of mean used with mean-removal turned on
 # mean_type = 'harmonic'
 mean_type = 'arithmetic'
+
+
+# default parameters for plot models
+model_name_d = "2.6S6X4"
+model_file_d = os.path.join(models_path_default, "Model-2.6S6X4-ZeroMean.A3d")
+parameter_d = "S" 
+grid_file_d = os.path.join(models_path_default, "grid.6") 
+rmean_d = False 
+depth_and_level_d = [2880.0,3.0,7.265]
+ref_model_file_d = os.path.join(models_path_default, "Model-2.6S6X4-ZeroMean_1D")
 
 
 def get_interp(fname, dx = 1.0):
@@ -91,8 +110,7 @@ def get_interp(fname, dx = 1.0):
         
     return lons, lats, H
 
-
-def plot_model(model_name, model_file, parameter, grid_file, rmean, depth_and_level, ref_model_file, ax):
+def plot_model(ax,model_name=model_name_d, model_file=model_file_d, parameter=parameter_d, grid_file=grid_file_d, rmean=rmean_d, depth_and_level=depth_and_level_d, ref_model_file=ref_model_file_d):
     """Plot a map of the A3d file
 
     Args:
@@ -185,14 +203,16 @@ def plot_model(model_name, model_file, parameter, grid_file, rmean, depth_and_le
         cmap = cmapSved(41)    
     
     x_rs = x.reshape((lats.shape))
-    cf = ax.contourf(lons,lats,x_rs, cmap=cmap,transform=ccrs.PlateCarree(),levels=np.linspace(x_rs.min(),x_rs.max(),100))
+    cf = ax.contourf(lons,lats,x_rs, cmap=cmap,transform=ccrs.PlateCarree(),levels=np.linspace(x_rs.min(),x_rs.max(),100), zorder=1)
+    
+    print("Setting zorder")
     
     # add a colorbar
     
     cbar = plt.colorbar(cf, shrink=0.5, orientation="horizontal", format='%3.0f', label=f"{'$V_s$' if parameter=='S' else 'Xi'} - {depth:.0f}km ({model_name})", pad=0.05)
     
     
-def plot_great_circles(event, stations, ax):
+def plot_great_circles_obspy(event, stations, ax):
     """Plot Great circle
     - event : obspy event
     - stations : pandas dataframe with lat and lon entries
@@ -201,7 +221,13 @@ def plot_great_circles(event, stations, ax):
     origin = event.preferred_origin() or event.origins[0]
     lon_s,lat_s = origin.longitude, origin.latitude
     
-    alpha = np.exp(-len(stations.index)/200)
+    plot_great_circles(lat_s,lon_s,stations, ax)
+
+def plot_great_circles(lat_s, lon_s, stations, ax):
+    """Plot Great circles
+    """
+        
+    alpha = np.exp(-len(stations.index)/500)
     # alpha = 0.2
         
     first = True
@@ -240,7 +266,7 @@ def plot_event(event, ax, proj):
 def plot_stations(stations, ax):    
     ax.scatter(stations["lon"], stations["lat"], marker=".", color="darkgreen", s = 10, transform = ccrs.PlateCarree(), label = "stations", zorder=10)
 
-def plot_hotspots(ax):
+def plot_hotspots(ax, write_names = False):
     '''Plot hotspots from Steinberger (2000)..
     '''
     
@@ -249,8 +275,29 @@ def plot_hotspots(ax):
     
     X = [xy[0] for xy in hotspots.values()]
     Y = [xy[1] for xy in hotspots.values()]
+        
+    # ax.scatter(X,Y,marker="o",color="g",s=1000,transform = ccrs.PlateCarree(),label="hotspots",zorder=10)
     
-    ax.scatter(X,Y,marker="o",color="g",s=100,transform = ccrs.PlateCarree(),label="hotspots")
+    if not(write_names):
+    
+        ax.plot(Y,X,ls='', marker="o", markerfacecolor=(0,1,0.1), markeredgecolor='k', ms=5, zorder=5, clip_on=False,transform = ccrs.PlateCarree(), label="hotspot")
+        
+    else:
+        
+        transform = ccrs.PlateCarree()._as_mpl_transform(ax)
+        
+        ax.plot(Y,X,ls='', marker="o", markerfacecolor=(0,1,0.1),
+                markeredgecolor='k', ms=5,
+                zorder=5, clip_on=False,transform = ccrs.PlateCarree(), label="hotspot")
+      
+        
+      
+        for name,xy in hotspots.items():
+                        
+            ax.annotate(name, xy[::-1], xycoords=transform)
+        
+        
+    
 
 def plot_plates(ax):
     '''Plot plate boundaries from the UTIG PLATES collection.
@@ -285,6 +332,7 @@ if __name__ == "__main__":
     parser.add_argument("--ulvz", help="[lat,lon] of an ulvz", nargs=2, type=float)
 
     parser.add_argument('--hotspots', action='store_true',help='plot main hotspots.')
+    parser.add_argument('--hotspots_names', action='store_true',help='plot main hotspots names.')
     parser.add_argument('--plates', action='store_true',help='plot main plates boundaries.')
     
     parser.add_argument("--latlon", help="central latitude and longitude in degrees", nargs=2, type=float, default=[0.0,0.0])
@@ -310,25 +358,15 @@ if __name__ == "__main__":
     
     semUCBPathBase = '/home/sylvain/documents/Geosciences/stage-BSL/data/models/models_3D/semucb_model'
 
-    plot_model(
-        model_name = "2.6S6X4",
-        model_file = os.path.join(models_path_default, "Model-2.6S6X4-ZeroMean.A3d"),
-        parameter = "S", 
-        grid_file = os.path.join(models_path_default, "grid.6"), 
-        rmean = False, 
-        depth_and_level = [2800.0,3.0,7.265], 
-        ref_model_file = os.path.join(models_path_default, "Model-2.6S6X4-ZeroMean_1D"),
-        ax = ax    
-        )
+    plot_model(ax)
     
     if args.plates: plot_plates(ax)
     
-    if args.hotspots: plot_hotspots(ax)
+    if args.hotspots: plot_hotspots(ax, write_names=args.hotspots_names)
     
     if args.receivers: stations = read_receivers(args.receivers)
     
     if args.event: event = read_events(args.event)[0]
-    
         
     if args.receivers and args.event: 
         
@@ -338,7 +376,7 @@ if __name__ == "__main__":
             ev_orig = event.preferred_origin()
             evla,evlon = ev_orig.latitude, ev_orig.longitude
             stations = stations[(locations2degrees(evla,evlon,stations["lat"],stations["lon"]) >= dmin) & (locations2degrees(evla,evlon,stations["lat"],stations["lon"]) <= dmax)]
-        plot_great_circles(event,stations,ax)
+        plot_great_circles_obspy(event,stations,ax)
         
     if args.event: plot_event(event,ax,proj)
     
@@ -346,7 +384,7 @@ if __name__ == "__main__":
     
     if args.ulvz:
         lat,lon = args.ulvz
-        ax.scatter(lon, lat, marker="o", color="r", ec="k",lw=1.5, s = 100, transform = ccrs.PlateCarree(), label = "ULVZ", zorder=10)
+        ax.scatter(lon, lat, marker="o", color="r", ec="k",lw=1.5, s = 100, transform = ccrs.PlateCarree(), label = "ULVZ", zorder=4)
     
     
     ax.set_global()

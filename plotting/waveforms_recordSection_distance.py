@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 
 import numpy as np
-from numpy import pi, sin, cos, arccos
-import sys, os
+import  os
 
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 from matplotlib.transforms import blended_transform_factory
-import obspy
+
+import json
 
 
 from obspy.core import read
@@ -24,6 +23,7 @@ parser.add_argument("-t", dest="time_range", help="time bounds", nargs=2, type=f
 parser.add_argument("-d", dest="dist_range", help="distance bounds", nargs=2, type=float, default=[None,None])
 parser.add_argument("-c", dest="component", help="component to plot (R|T|Z)", type=str, default="T")
 parser.add_argument("-s", dest="scale", help="scaling of the traces", type=float, default=1.0)
+parser.add_argument("-ds", help="down sampling : plot one trace every `ds` traces", type=int, default=-1)
 parser.add_argument("-o", dest="out_file", help="output figure name", type=str, default="")
 parser.add_argument("--norm", help="normalisation method", type=str, default="trace")
 parser.add_argument("--title", dest="title", help="title to add to the figure (default : component)", type=str, default="")
@@ -44,6 +44,8 @@ lat_event = trace.stats.evla
 lon_event = trace.stats.evlo
 depth_event = trace.stats.evde
 origin_time_event = trace.stats.event_origin_time
+
+print(f"[debug] t0 = {origin_time_event - trace.stats.starttime}")
 
 # select on component
 stream = stream.select(component = args.component)
@@ -67,6 +69,9 @@ if args.dist_range[0] or args.dist_range[0]:
     stream = select_distance(stream, d1, d2)
     print(f"Select : {nb_traces  - stream.count()} traces removed based on distance criteria.")
     
+# ++ removing traces for speede ++
+if args.ds > 0:
+    stream.traces = stream.traces[::args.ds]
     
 # ++ align traces on arrival time ++
 if args.phase_ref:
@@ -105,7 +110,7 @@ stream.plot(
     norm_method = args.norm,
     scale = args.scale,
     show=False, 
-    reftime = origin_time_event,
+    reftime =origin_time_event,
     fig=fig,
     fillcolors = ("r","b") if args.fill else (None,None)
     )
@@ -123,19 +128,30 @@ if args.plot_station_name:
 
 if args.phase_list:
     
+    from obspy.taup import plot_travel_times
+    
     obspy_phase_lists = ["ttp", "tts", "ttbasic", "tts+", "ttp+", "ttall"]
     if len(args.phase_list) == 1 and args.phase_list[0] in obspy_phase_lists:
         phase_list = get_phase_names(args.phase_list[0])
     else:
         phase_list = args.phase_list
-        
+    d1, d2 = ax.get_xlim()
+
+    # build-in obspy olotting routine : scatter and not lines
+    # plot_travel_times(
+    #     min_degrees=d1,
+    #     max_degrees=d2,
+    #     source_depth=depth_event, 
+    #     phase_list=phase_list, 
+    #     ax = ax,
+    #     show=False)
+    
     # model_name="prem"
     model_name="iasp91"
     model = TauPyModel(model=model_name)
     
-    print(f"Computing phases time arrivals for model {model_name} and the following phases : {phase_list}")
     
-    d1, d2 = ax.get_xlim()
+    print(f"Computing phases time arrivals for model {model_name} and the following phases : {phase_list}, for offset in [{d1:.2f},{d2:.2f}]° at depth={depth_event:.2f}km")    
 
     dist = np.linspace(d1, d2, 50)
     
@@ -172,6 +188,9 @@ if args.phase_list:
 
     colors=['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52']
     
+    # for phase in phase_list:
+    #     print(f"[debug] {phase} first arrival : Δ = {phase_arrival_dist[phase][0]:.2f}°, t = t0+{phase_arrival_time[phase][0]:.0f}s")
+    
     for c,phase in zip(colors,phase_list):
         ax.plot(phase_arrival_dist[phase], np.array(phase_arrival_time[phase]), c="w", lw=3)
         ax.plot(phase_arrival_dist[phase], np.array(phase_arrival_time[phase]), label=phase, c=c, lw=2)
@@ -197,6 +216,13 @@ if args.out_file:
             
     print(f"Saving {args.out_file}")
     plt.savefig(args.out_file, dpi=500, bbox_inches='tight')
+    
+    # also saving configuration
+    config_file = f"{args.out_file}.config"
+    print(f"Configuration options saved in {config_file}")
+    config_json = json.dumps(vars(args), indent = 3)
+    with open(config_file, "w") as out:
+        out.write(config_json)
 
 else:
     plt.show()

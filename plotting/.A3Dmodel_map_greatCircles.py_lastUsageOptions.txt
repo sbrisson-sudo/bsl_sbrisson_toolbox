@@ -1,0 +1,1 @@
+--hotspots --hotspots_names

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-from django.http import StreamingHttpResponse
 import numpy as np
 from numpy import pi, cos, sin, arccos
 import matplotlib.pyplot as plt
@@ -8,11 +7,11 @@ import matplotlib as mpl
 import sys, os
 import pandas as pd
 import re
-import json
 
 from obspy.taup import TauPyModel
 from obspy.taup.utils import get_phase_names
 from obspy.geodetics import locations2degrees
+
 
 
 mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=['636EFA', 'EF553B', '00CC96', 'AB63FA', 'FFA15A', '19D3F3', 'FF6692', 'B6E880', 'FF97FF', 'FECB52'])
@@ -40,7 +39,7 @@ parser.add_argument("-t", dest="time_range", help="time bounds", nargs=2, type=f
 parser.add_argument("--phases", dest="phase_list", help="list of phases arrival to compute with taup and plot", nargs="+", type=str)
 parser.add_argument("--title", dest="title", help="title to add to the figure (default : component)", type=str, default="")
 parser.add_argument("--legend", dest="labels", help="labels to add to the traces (first label for the 3 first traces etc.", type=str, nargs="+")
-parser.add_argument("--diff", help="For benchmarking : plot the differences between 2 set of 3 traces, they must have the same time axis.", action="store_true")
+parser.add_argument("--diff", help="For benchmarking : plot the differences between 2 set of 3 traces, they must have the same time axis.", type=bool,default=6)
 
 args = parser.parse_args()
 
@@ -66,24 +65,21 @@ firstTrace = {
     "T" : True,
 }
 
-# *** STATION INFORMATION ***
 # reading receivers.dat
-
 data_sta = pd.read_csv(args.receivers_file, header = 2, sep = "\s+")
 stations_coord = dict(zip(data_sta["stn"], zip(data_sta["lat"], data_sta["lon:"])))
 print(f"{args.receivers_file} read.")
 stations = []
 
-# *** SYNTHETICS INFORMATION ***
 # reading macromesh.dat or recepteurs.info
 Rt = 6371.
 dep_s,lat_s,lon_s,t0 = 0.0,0.0,0.0,0.0
 fmax = 0.0 # fréquence max de la source (heaviside)
 
-def read_macromesh_dat(macromesh_file):
+def read_macromesh(macromesh_file):
     global dep_s, lat_s, lon_s, t0, fmax
-    with open(macromesh_file, "r") as f:
-        lines = f.read().splitlines()
+    with open(macromesh_file, "r") as io:
+        lines = io.read().splitlines()
         i = 84
         dep_s = Rt - float(lines[i-3])/1000
         lat_s = 90 - float(lines[i-2]) # colatitude
@@ -94,43 +90,28 @@ def read_macromesh_dat(macromesh_file):
 
 def read_recepteurs_info(recepteurs_info_file):
     global dep_s, lat_s, lon_s, t0
-    with open(recepteurs_info_file, "r") as f:
-        lines = f.read().splitlines()
+    with open(recepteurs_info_file, "r") as io:
+        lines = io.read().splitlines()
         dep_s,lat_s,lon_s = map(float, lines[5].split())
         lat_s = 90.0 - lat_s
         dep_s = Rt - dep_s/1000
         t0 = 450.0 # pas d'info sur t0
     print("recepteurs.info read.")
-    
-def read_macromesh_json(macromesh_file):
-    global dep_s, lat_s, lon_s, t0, fmax
-    with open(macromesh_file, "r") as f:
-        data = json.load(f)
-        coords = data["source"]["coordinates"]
-        dep_s = Rt - coords["radius"]/1000.0
-        lat_s = 90. - coords["colatitude"]
-        lon_s = coords["longitude"]
-        t0 =  data["source"]["origin_time"]
-    print("macromesh.json read.")
+
         
 if args.macromesh_file:
-    if os.path.splitext(args.macromesh_file)[-1] == ".dat":
-        read_macromesh_dat(args.macromesh_file)
-    else:
-        read_macromesh_json(args.macromesh_file)
+    read_macromesh(args.macromesh_file)
 elif args.recepteurs_info_file:
     read_recepteurs_info(args.recepteurs_info_file)
-elif os.path.exists("macromesh.json"):
-    read_macromesh_json("macromesh.json")
 elif os.path.exists("macromesh.dat"):
-    read_macromesh_dat("macromesh.dat")
+    read_macromesh("macromesh.dat")
 elif os.path.exists("recepteurs.info"):
     read_recepteurs_info("recepteurs.info")
 else:
     print("No file to read source coordinate found, exiting.")
     exit()
 
-
+    
 # reading time bounds
 if args.time_range[0] or args.time_range[1]:
     t1,t2 = args.time_range
@@ -138,15 +119,13 @@ else:
     t1 = 0
     t2 = None
 
-# *** PLOTTING ***
-
 fig, axes = plt.subplots(3, 1, figsize = (15,5))
+# plt.subplots_adjust(top=0.85)
 
-# labels for each 3 traces
 if args.labels and not(len(args.labels) == len(args.trace_files)//3): 
         print("Error : wrong number of labels for the number of traces.")
         args.labels = None
-      
+        
 if args.diff and not(len(args.trace_files)==6):
     print("Error : wrong number of traces for doing diff (should be 6).")
     args.diff = False
@@ -156,13 +135,11 @@ data = dict(zip(["L","R","T"], [[],[],[]]))
 for (i,file) in enumerate(args.trace_files):
 
     trace = np.loadtxt(file)
-    
-    filename = os.path.basename(file)
 
-    name = re.findall(stationNameRe, filename)[0][1:]
+    name = re.findall(stationNameRe, file)[0][1:]
     stations.append(name if len(name)==4 else "_"+name)
 
-    dir = re.findall(stationDirRe, filename)[0][1]
+    dir = re.findall(stationDirRe, file)[0][1]
     time = trace[:,0]-t0
     
     imin = np.argmin(np.abs(time - t1))
@@ -223,21 +200,16 @@ if args.phase_list and len(stations) == 1:
     
     
     arrivals = model.get_travel_times(
-            source_depth_in_km = dep_s,
-            distance_in_degree = dist,
+            source_depth_in_km=dep_s,
+            distance_in_degree=dist,
             phase_list = phase_list,
             )
-    
-    print(len(arrivals))
     
     colors=['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52']
     
     for c,arrival in zip(colors,arrivals):
-        
         for ax in axes[:2]:
             ax.plot(arrival.time, 0.8*ax.get_ylim()[1], "v", ms=ms, markeredgecolor="k")
-        
-        # legend only on one ax
         ax = axes[2]
         ax.plot(arrival.time, 0.8*ax.get_ylim()[1], "v", ms=ms, label = arrival.phase.name, markeredgecolor="k")
         ax.legend(title = f"Taup model : {model_name}", loc=2)
