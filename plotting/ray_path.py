@@ -65,6 +65,8 @@ ax.set_ylim([0.0, 6371.0])
 
 if len(phase_list) > 10:    
     ax.legend(ncol=len(phase_list)//10, loc = "lower left")
+else:
+    ax.legend()
     
 # plt.title(f"Δ = {args.dist:.0f}°")    
     

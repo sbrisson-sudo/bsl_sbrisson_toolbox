@@ -21,21 +21,26 @@ sys.path.append(pathbase)
 
 from common.setup import models_path_default
 from common.my_io import read_receivers, to_obspy_inventory
+from common.barycenter_sphere import barycenter_on_sphere, compute_mean_point_stations_event
+
 
 from Model1D import Model1D
 from ModelA3d import ModelA3d
 import pyspl
 from UCBColorMaps import cmapSved, cmapXved
 
-from Sphere import delaz, gc_minor, shoot
+from Sphere import delaz, gc_minor
 
 import argparse
 
 from obspy.taup import TauPyModel
-from obspy.geodetics.base import locations2degrees
 from obspy.core.event import read_events
 from obspy.taup.ray_paths import get_ray_paths
 from obspy.core.event import Catalog
+
+from obspy.geodetics.base import gps2dist_azimuth,locations2degrees,degrees2kilometers
+import geopy
+from geopy.distance import geodesic
 
 import pickle
 
@@ -214,20 +219,18 @@ if __name__ == "__main__":
     # parameter to plot (A3d descriptor name)
     param = 'S'
     
-    semUCBPathBase = '/home/sylvain/documents/Geosciences/stage-BSL/data/models/models_3D/semucb_model'
-
     # model configuration
     modelConfig = {
         # simply for naming of output files
         'name': '2.6S6X4',
         # A3d file
-        'modelfile': os.path.join(semUCBPathBase,'Model-2.6S6X4-ZeroMean.A3d'),
+        'modelfile': os.path.join(models_path_default,'Model-2.6S6X4-ZeroMean.A3d'),
         # 1D reference model (needed for plotting xi sections)
-        'refmodelfile': os.path.join(semUCBPathBase,'Model-2.6S6X4-ZeroMean_1D'),
+        'refmodelfile': os.path.join(models_path_default,'Model-2.6S6X4-ZeroMean_1D'),
         # spherical spline grid files
         'gridfiles':  {
-            'S': os.path.join(semUCBPathBase,'grid.6'),
-            'X': os.path.join(semUCBPathBase,'grid.4')}
+            'S': os.path.join(models_path_default,'grid.6'),
+            'X': os.path.join(models_path_default,'grid.4')}
         }
         
     interpConfig = {
@@ -242,8 +245,8 @@ if __name__ == "__main__":
     
     parser.add_argument('--stations', type=str,help='receivers.dat file')
     parser.add_argument('--event', type=str,help='quakeML event file')
-    parser.add_argument('--lonlat1', type=float,help='first profile point',nargs=2,default=(60.0, 25.0))
-    parser.add_argument('--lonlat2', type=float,help='first profile point',nargs=2,default=(-118.0, 17.0))
+    parser.add_argument('--lonlat1', type=float,help='first profile point',nargs=2,required=True)
+    parser.add_argument('--lonlat2', type=float,help='first profile point',nargs=2,required=True)
     parser.add_argument('--ulvz-lonlat', dest='ulvz', type=float,help='ulvz position',nargs=2)
     
     parser.add_argument("-dmax", help="maximum station-section deistance to plot stations", type=float, default=180.0)
@@ -254,11 +257,86 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
+    # getting station positions
+    if args.stations: stations = read_receivers(args.stations)
+
+    # getting event information
+    if args.event: event = read_events(args.event)[0]
+    
+    # setting/computing limits points of profil
+    
+    lonlat1 = args.lonlat1
+    lonlat2 = args.lonlat2
+    
+    # bellow is an attempt to automatically choose the end points of the section
+
+    # if (not(any(lonlat1)) or not(any(lonlat2))) and args.stations and args.event :
+        
+    #     # compute mean point of stations
+    #     lat_mean_stn,lon_mean_stn = barycenter_on_sphere(stations["lat"],stations["lon"])
+        
+    #     origin = event.preferred_origin()
+    #     _,az,b_az = gps2dist_azimuth(origin.latitude, lat_mean_stn, origin.longitude, lon_mean_stn)
+                
+    #     # compute average event-station distance
+    #     dist_mean = locations2degrees(origin.latitude, lat_mean_stn, origin.longitude, lon_mean_stn)
+        
+    #     # points to be taken for section limits
+    #     dist_event_side = 0.1*dist_mean
+    #     dist_stn_side = 0.2*dist_mean
+        
+    #     dist_event_side_km = degrees2kilometers(dist_event_side)
+    #     dist_stn_side_km = degrees2kilometers(dist_stn_side)
+
+        
+    #     event_position = geopy.Point(origin.latitude, origin.longitude)
+    #     mean_stn_position = geopy.Point(lat_mean_stn,lon_mean_stn)
+        
+    #     point1 = geodesic(kilometers=dist_event_side_km).destination(event_position, bearing=b_az)
+    #     point2 = geodesic(kilometers=dist_stn_side_km).destination(mean_stn_position, bearing=az)
+        
+    #     lonlat1 = (point1.longitude, point1.latitude)
+    #     lonlat2 = (point2.longitude, point2.latitude)
+        
+    #     # test everything ok
+        
+    #     import cartopy.crs as ccrs
+    #     import cartopy.feature as cfeature  
+        
+    #     fig = plt.figure()
+        
+    #     lat0,lon0 = compute_mean_point_stations_event(event,stations)
+        
+    #     proj = ccrs.Robinson(
+    #         central_longitude = lon0,
+    #     )   
+        
+    #     ax = fig.add_subplot(1, 1, 1, projection=proj)
+
+    #     ax.coastlines()
+    #     ax.add_feature(cfeature.LAND)
+    #     ax.gridlines(linestyle=":", color="k")
+        
+    #     lon1,lat1 = lonlat1 
+    #     lon2,lat2 = lonlat2
+        
+    #     print([lon1,lon2,origin.longitude,lon_mean_stn],[lat1,lat2,origin.latitude,lat_mean_stn])
+        
+    #     ax.scatter([lon1,lon2,origin.longitude,lon_mean_stn],[lat1,lat2,origin.latitude,lat_mean_stn], transform = ccrs.PlateCarree())
+        
+    #     ax.plot((lon1,lon2), (lat1,lat2), "g",transform=ccrs.Geodetic())
+    #     ax.plot((lon1,lon_mean_stn), (lat1,lat_mean_stn), "b",transform=ccrs.Geodetic())
+        
+    #     ax.set_global()
+        
+    #     plt.show()
+        
+    #     exit()
+        
+        
     phases = args.phase_list
 
-    if args.stations: stations = read_receivers(args.stations)
-    
-    if args.event: event = read_events(args.event)[0]
+
     
     ax = plot_model(args.lonlat1, args.lonlat2, modelConfig, interpConfig, vmax=4)
     

@@ -12,7 +12,7 @@ from turtle import width
 import numpy as np
 import matplotlib.pyplot as plt
 
-plt.style.use("myStyle")
+plt.style.use("publication")
 
 from numpy import cos, sin, pi
 import pandas as pd

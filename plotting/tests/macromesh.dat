@@ -1,0 +1,173 @@
+######################################################### 
+#  Configuration file for the sandwich CSEM program suite                          
+#  Contain all the configuration options needed by the program :  
+#  database management, parallelisation, SEM mesh and model, 
+#  modes models and frequencies, source, interpolation SEM-NMS
+#  Do not contain the position of the receivers (see receivers.dat) 
+######################################################### 
+# database directory          
+DATA                                                      
+# (unused) La partie SEM de base de donnee sur disque local?      
+.false.                                                   
+# (unused) Les backups doivent ils aussi etre faire en local?     
+.false.                                                   
+# (unused) if one of two previous is .true. , where?               
+/state/partition1/sc845/                                  
+### SEM ################################################## 
+# Mesh configuration           
+# (macromesh.dat)                                
+# Parameters values need to be after the 15th column        
+# after the `=` signs                           
+#                                                         
+# The couronnes (shell) are ordered from the Earth center     
+# There is (ncour + 1) interfaces :                        
+#                                                         
+# ----------------- interface (icour + 1)                 
+#  couronne icour                                         
+# ----------------- interface (icour)                     
+#                                                         
+# `nelh1`` and `degh1` describe the first shell (couronne)     
+# The `nelh` and `degh` of the upper shells are imposed  
+# by the nature of the interfaces (conform or not conform)           
+#                                                         
+# See domaine.f90 for more detail       
+#                    
+#                                                         
+# To run the program on nproc processes enter :                        
+# nproc   npro  square_npro                               
+#                                                         
+# 4       2     T                                         
+# 8       2     F                                         
+# 16      4     T                                         
+# 32      4     F                                         
+#########################################################
+npro          =4
+square_npro   =.false.
+nregion       =6                            
+parametrique  =.false.                      
+ncour         =3
+# radius of the (ncour+1) interfaces   
+3480000
+3500000
+3630000
+3850000
+# nature of the (ncour+1) interfaces   
+8
+2
+2
+8
+# geometry of the (ncour) shells (couronnes)      
+1
+1
+1
+nelh1         =12
+# nelv of the (ncour) shells (couronnes)      
+1
+2
+2
+degh1         =7
+# degv of the (ncour) shells (couronnes)      
+2
+6
+6
+# anisotropy in the (ncour) shells (couronnes)             
+.true.
+.true.
+.true.
+# Earth model                                    
+modele        =SUCB                                      
+autograv      =.false.                                    
+attenuation   =.true.    
+# ULVZ anomaly (kind = 'CAM' | 'BSL')
+ulvz          =.true.
+kind          =CAM                                
+# (unmaintained) visualisation 
+gen_pV3       =.false.                                    
+visu          =.false.                                    
+### SOURCE ###############################################
+# source information :
+#
+# point source coordinates r (radius, m), theta (colatitude, °), phi (longitude, °)
+3441000.0
+112.54
+25.21
+# moment tensor Mrr,Mtt,Mpp,Mrt,Mrp,Mtp
+-6.29e+25
+2.6e+25
+3.7e+25
+-1.82e+25
+0.002e+25
+-4.01e+25
+# geocentric correction:
+.true.                                                     
+### TIME #################################################
+# time solving information :
+#
+# time step (s) 
+0.15
+# number of timesteps 
+17050
+# keeping one timestep over isamp (isamp=)
+5
+# saving on disk one timstep over isamp*nrwite (nwrite=)
+20
+# backup one timestep over nwrite*isamp*nbackup (nwrite=) 
+10
+# (unmaintained) en cas de visu, refresh tout ivisu pas de de temps: 
+10                                                   
+# source time function (heavis | ricker):                
+heavis                                               
+# if ricker -> ricker central frequency         
+0.015E0                                              
+# if heavis -> heaviside 4 corners frequencies
+1.000e-03
+1.000e-02
+8.333e-02
+1.000e-01                                           
+# source central time (s) 
+450
+### MODES1 #######################################
+# mode database configuration
+# formerly stock_freq.dat
+max ang order Lmax = 3000
+max az order  nmax = 1000
+number of DtN      = 2
+earth model file name (one for each DtN)
+model file name    = lowprem_3480
+attenuation        =.true.
+model file name    = upprem_3850
+attenuation        =.true.
+minimum  frequency = 1.000E-05
+maximum1 frequency = 1.200E-01
+maximum2 frequency = 1.700E-01
+### INTERPOLATION ################################
+# interpolation tuning parameters
+# You shouldn't have to modify the first 5 parameters
+# See the documentation for how to choose the last 2 frequencies
+#
+#  
+12.0  #facteur du nombre maxi de beta points par element (*ngll^2)
+1.5   #facteur pour Mcol (1<=> Mcol= nb points de gll sur l'equateur)
+8.0   #const_nb_max_gll: nombre max de gll sur un paralelle
+8     #degre de l'interpolation de 2 vers 1 pour phi
+8     #degre de l'Interpolation de 2 vers 1 pour theta
+0.11 #frequence max du regime permanent
+0.165 #frequence max du regime transitoire
+### MODES2 #######################################          
+# force_fmin: Fmin flotant ou pas:
+.false.
+# Cancel_gravity
+.true.
+# Use_tref (dans l'attenuation)
+.true.
+# check_modes
+.true.
+# seuil_ray (seuil de coef rayleigh a partir duquelle on vire le mode)
+1.e-5
+# l_startlevel
+500
+### ETC ################################################# 
+# (unused) temps start coupling
+0.
+# (unused) temps stop coupling
+0.    

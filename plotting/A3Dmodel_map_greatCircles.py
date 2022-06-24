@@ -20,6 +20,8 @@ sys.path.append(pathbase)
 
 from common.my_io import read_receivers
 from common.setup import models_path_default
+from common.barycenter_sphere import compute_mean_point_stations_event
+
 
 import json
 
@@ -335,7 +337,7 @@ if __name__ == "__main__":
     parser.add_argument('--hotspots_names', action='store_true',help='plot main hotspots names.')
     parser.add_argument('--plates', action='store_true',help='plot main plates boundaries.')
     
-    parser.add_argument("--latlon", help="central latitude and longitude in degrees", nargs=2, type=float, default=[0.0,0.0])
+    parser.add_argument("--latlon", help="central latitude and longitude in degrees", nargs=2, type=float, default=[None,None])
     parser.add_argument("-d", dest="dist_range", help="distance bounds", nargs=2, type=float, default=[0.0,180.0])
     
     parser.add_argument('-o', dest="outfile", type=str,help='out figure name')
@@ -347,6 +349,17 @@ if __name__ == "__main__":
     fig = plt.figure(figsize=(8,8))
     
     lat0,lon0 = args.latlon
+    
+    
+    if args.receivers: stations = read_receivers(args.receivers)
+    
+    if args.event: event = read_events(args.event)[0]
+    
+    if not(lat0) and args.receivers and args.event:
+        lat0,lon0 = compute_mean_point_stations_event(event,stations)
+    
+    
+    
     proj = LowerThresholdOthographic(
         central_latitude=lat0,
         central_longitude=lon0
@@ -364,9 +377,7 @@ if __name__ == "__main__":
     
     if args.hotspots: plot_hotspots(ax, write_names=args.hotspots_names)
     
-    if args.receivers: stations = read_receivers(args.receivers)
-    
-    if args.event: event = read_events(args.event)[0]
+
         
     if args.receivers and args.event: 
         

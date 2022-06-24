@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-from django.http import StreamingHttpResponse
 import numpy as np
 from numpy import pi, cos, sin, arccos
 import matplotlib.pyplot as plt

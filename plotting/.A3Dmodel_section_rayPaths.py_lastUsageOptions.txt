@@ -1,0 +1,1 @@
+--event tests/event.xml --stations tests/receivers.dat --lonlat1 40 -26 --lonlat2 -110 37 --ulvz-lonlat -24 15 -o gallery/A3Dmodel_section_rayPaths.png

@@ -6,18 +6,21 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import cartopy
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
-from numpy import pi, cos, sin , arccos
+import sys,os
 
-from obspy.geodetics.base import gps2dist_azimuth
 from obspy.geodetics import locations2degrees
 from obspy.core.event import read_events
 
+pathdir = os.path.dirname(__file__)
+pathbase = os.path.abspath(os.path.join(pathdir, os.pardir))
 
-import os
+sys.path.append(pathbase)
+
+from common.my_io import read_receivers
+from common.barycenter_sphere import compute_mean_point_stations_event
 
 import pandas as pd
 
@@ -29,19 +32,16 @@ import argparse
 parser = argparse.ArgumentParser()
 
 parser.add_argument("receivers_file", help="receivers.dat file", type=str)
-parser.add_argument("--center", help="[lat,lon] of the source", nargs=2, type=float, default=[0.0,0.0])
+parser.add_argument("--latlon-proj",dest="lat0lon0", help="[lat,lon] of the source", nargs=2, type=float, default=[None,None])
 parser.add_argument("--names", help="annotate station codes", action="store_true", default=False)
 parser.add_argument("--event", help="quakeML event file", type=str)
 parser.add_argument("--ulvz", help="[lat,lon] of an ulvz", nargs=2, type=float)
 
 parser.add_argument("--dist", help="distance bounds (require source)", nargs=2, type=float, default=[None,None])
-# parser.add_argument("--azimuth", help="angle between ulvz and station seen from source (need source and ulvz)", action="store_true", default=False)
 parser.add_argument("-o", dest="out_file", help="output figure name", type=str, default="")
 
 
 args = parser.parse_args()
-
-lat0,lon0 = args.center # center of the projection
 
 figsize=(8,8)
 
@@ -51,6 +51,18 @@ class LowerThresholdOthographic(ccrs.Orthographic):
     @property
     def threshold(self):
         return 1e3
+    
+lat0,lon0 = args.lat0lon0 # center of the projection
+
+    
+# loading stations data
+df = read_receivers(args.receivers_file)
+
+# loading event data
+if args.event:
+    event = read_events(args.event)[0]
+    if not(lat0):
+        lat0,lon0 = compute_mean_point_stations_event(event,df)
 
 # initiate figure
 
@@ -69,8 +81,7 @@ ax.gridlines(linestyle=":", color="k")
 
 # plotting source (just position)
 if args.event:
-    
-    event = event = read_events(args.event)[0]
+
     origin = event.preferred_origin()
     evla, evlon = origin.latitude, origin.longitude
     
@@ -81,19 +92,17 @@ if args.ulvz:
     ulvzla, ulvzlon = args.ulvz
     ax.scatter(ulvzlon,ulvzla, marker="o", color="orange", s = 100, transform = ccrs.PlateCarree(), label="ulvz")
 
-# loading stations data
 
-df = pd.read_csv(args.receivers_file, header = 2, sep = "\s+")
 
 # ++ filter on distance ++
 if args.event and args.dist[0]:
     dmin,dmax = args.dist
-    df["dist"] = [locations2degrees(evla,evlon,φ,λ) for φ,λ in zip(df["lat"],df["lon:"])]
+    df["dist"] = [locations2degrees(evla,evlon,φ,λ) for φ,λ in zip(df["lat"],df["lon"])]
     df = df.loc[(df['dist'] >= dmin) & (df['dist'] <= dmax)]
 
     
 names = list(df["stn"])
-lon = df["lon:"].to_numpy()
+lon = df["lon"].to_numpy()
 lat = df["lat"].to_numpy()
 
 ax.scatter(lon,lat, marker="^", color="g", s = 100, transform = ccrs.PlateCarree(), label = "stations", ec="k")

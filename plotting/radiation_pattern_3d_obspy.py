@@ -25,7 +25,7 @@ if __name__ == "__main__":
     event = events[0]
     
     # -- obspy default plotting routine
-    event.plot()    
+    event.plot(show=False)    
     # event.plot(kind = ['beachball', 'p_sphere', 's_sphere'])
     
     # -- custom plotting
