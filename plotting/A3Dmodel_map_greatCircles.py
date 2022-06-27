@@ -368,8 +368,6 @@ if __name__ == "__main__":
     ax = fig.add_subplot(1, 1, 1, projection=proj)
     
     ax.gridlines(linestyle=":", color="k")
-    08/23/2016
-    semUCBPathBase = '/home/sylvain/documents/Geosciences/stage-BSL/data/models/models_3D/semucb_model'
 
     plot_model(ax)
     
