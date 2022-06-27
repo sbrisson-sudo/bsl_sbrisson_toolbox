@@ -33,7 +33,7 @@ def number_of_nodes(nelh,degh,nelv,degv):
         n_nodes += nelh**2*nv * degh*dv**2
     return n_nodes
 
-def parse_macromesh(macromesh_file, legacy_fmt):
+def parse_macromesh(macromesh_file, legacy_fmt=False):
 
     f = open(macromesh_file, "r")
     config = {}
