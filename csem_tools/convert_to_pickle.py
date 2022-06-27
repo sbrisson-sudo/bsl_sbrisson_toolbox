@@ -62,7 +62,7 @@ depth_km = Rt_km - coord["radius"]/1000.
 lat_s = 90. - coord["colatitude"]
 lon_s = coord["longitude"]
 
-t0 = config["source"]["origin_time"]
+t0_s = config["source"]["origin_time"]
 
 
 
