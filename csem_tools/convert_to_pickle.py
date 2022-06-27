@@ -58,7 +58,7 @@ depth_km,lat_s,lon_s,t0_s = 0.0,0.0,0.0,0.0
 config = parse_macromesh(args.macromesh_file)
 coord  = config["source"]["coordinates"]
 
-depth_km = Rt_km - coord["radius"]
+depth_km = Rt_km - coord["radius"]/1000.
 lat_s = 90. - coord["colatitude"]
 lon_s = coord["longitude"]
 
