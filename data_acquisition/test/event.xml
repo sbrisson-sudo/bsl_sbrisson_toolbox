@@ -1,0 +1,62 @@
+<?xml version='1.0' encoding='utf-8'?>
+<q:quakeml xmlns="http://quakeml.org/xmlns/bed/1.2" xmlns:q="http://quakeml.org/xmlns/quakeml/1.2">
+  <eventParameters publicID="smi:local/5849e25f-b015-48c8-9489-ada7078407f6">
+    <event publicID="smi:local/synthetic_event_event">
+      <preferredOriginID>smi:local/synthetic_event_origin</preferredOriginID>
+      <preferredMagnitudeID>smi:local/synthetic_event_magnitude</preferredMagnitudeID>
+      <preferredFocalMechanismID>smi:local/synthetic_event_focmec</preferredFocalMechanismID>
+      <type>earthquake</type>
+      <origin publicID="smi:local/synthetic_event_origin">
+        <time>
+          <value>1970-01-01T00:07:30.000000Z</value>
+        </time>
+        <latitude>
+          <value>-22.540000000000006</value>
+        </latitude>
+        <longitude>
+          <value>25.21</value>
+        </longitude>
+        <depth>
+          <value>30000.0</value>
+        </depth>
+      </origin>
+      <magnitude publicID="smi:local/synthetic_event_magnitude">
+        <mag>
+          <value>1.83</value>
+        </mag>
+        <type>mw</type>
+        <originID>smi:local/synthetic_event_origin</originID>
+      </magnitude>
+      <focalMechanism publicID="smi:local/synthetic_event_focmec">
+        <triggeringOriginID>smi:local/synthetic_event_origin</triggeringOriginID>
+        <momentTensor publicID="smi:local/synthetic_event_moment_tensor">
+          <derivedOriginID>smi:local/synthetic_event_origin</derivedOriginID>
+          <momentMagnitudeID>smi:local/synthetic_event_magnitude</momentMagnitudeID>
+          <scalarMoment>
+            <value>702848162834.6195</value>
+          </scalarMoment>
+          <tensor>
+            <Mrr>
+              <value>-6.29e+18</value>
+            </Mrr>
+            <Mtt>
+              <value>2.6e+18</value>
+            </Mtt>
+            <Mpp>
+              <value>3.7e+18</value>
+            </Mpp>
+            <Mrt>
+              <value>-1.82e+18</value>
+            </Mrt>
+            <Mrp>
+              <value>2000000000000000.0</value>
+            </Mrp>
+            <Mtp>
+              <value>-4.01e+18</value>
+            </Mtp>
+          </tensor>
+        </momentTensor>
+      </focalMechanism>
+    </event>
+  </eventParameters>
+</q:quakeml>
