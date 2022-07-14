@@ -26,10 +26,17 @@ def read_receivers(file):
 
 def to_obspy_inventory(stations):
     """Convert from the stations dataframe load from receivers.dat to a obspy station inventory"""
+
     stations_obspy = []
-    for idx,row in stations.iterrows():
+    # networks_obspy = []
+
+    for _,row in stations.iterrows():
+
         stations_obspy.append(Station(row["stn"], row["lat"], row["lon"], 0.0))
-    return Inventory(networks=[Network(row["nw"], stations_obspy)])
+
+        # networks_obspy.append(Network(row["nw"]))
+
+    return Inventory(networks=[Network("SY", stations_obspy)])
 
 if __name__ == "__main__":
     

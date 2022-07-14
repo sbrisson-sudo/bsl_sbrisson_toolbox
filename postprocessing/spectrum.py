@@ -4,7 +4,7 @@ import numpy as np
 from numpy.fft import fft
 
 import matplotlib.pyplot as plt
-plt.style.use("myStyle")
+# plt.style.use("myStyle")
 
 import pandas as pd
 

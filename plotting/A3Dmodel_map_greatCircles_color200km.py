@@ -18,9 +18,10 @@ pathdir = os.path.dirname(__file__)
 pathbase = os.path.abspath(os.path.join(pathdir, os.pardir))
 sys.path.append(pathbase)
 
-from common.my_io import read_receivers
+from common.my_io import read_receivers, to_obspy_inventory
+
 from common.setup import models_path_default
-from common.barycenter_sphere import compute_mean_point_stations_event,barycenter_on_sphere
+from common.barycenter_sphere import compute_mean_point_stations_event
 
 
 import json
@@ -33,9 +34,15 @@ import cartopy.crs as ccrs
 from cartopy.io.shapereader import Reader
 from cartopy.feature import ShapelyFeature
 
+from obspy.core.event import Catalog
 from obspy.core.event import read_events
 from obspy.imaging.beachball import beach
 from obspy.geodetics.base import locations2degrees, gps2dist_azimuth
+from obspy.taup.ray_paths import get_ray_paths
+
+
+import geopy
+from geopy.distance import geodesic
 
 import pandas as pd
 
@@ -57,7 +64,8 @@ warnings.filterwarnings('ignore')
 
 # constantes
 
-r_earth = 6371.0
+r_earth_km = 6371.0
+r_cmb_km = 3480.0
 
 # type of mean used with mean-removal turned on
 # mean_type = 'harmonic'
@@ -137,7 +145,7 @@ def plot_model(ax,model_name=model_name_d, model_file=model_file_d, parameter=pa
     
     # build the radial b-spline interpolant
     bspl = pyspl.CubicBSplines(model.get_bspl_knots())
-    r = np.asarray([r_earth - depth_and_level[0]])
+    r = np.asarray([r_earth_km - depth_and_level[0]])
     V = bspl.evaluate(r)
     
     # sample the model (relative perturbations)
@@ -215,39 +223,8 @@ def plot_model(ax,model_name=model_name_d, model_file=model_file_d, parameter=pa
     cbar = ax.get_figure().colorbar(cf, shrink=0.5, orientation="horizontal", format='%3.0f', label=f"{'$V_s$' if parameter=='S' else 'Xi'} - {depth:.0f}km ({model_name})", pad=0.05)
     
     
-def plot_great_circles_obspy(event, stations, ax, color_az = True):
-    """Plot Great circle
-    - event : obspy event
-    - stations : pandas dataframe with lat and lon entries
-    """
-    
-    origin = event.preferred_origin() or event.origins[0]
-    lon_s,lat_s = origin.longitude, origin.latitude
-
-    if color_az:
-        plot_great_circles_color_az(lat_s, lon_s, stations, ax)
-    else:
-        plot_great_circles(lat_s,lon_s,stations, ax)
-
-def plot_great_circles(lat_s, lon_s, stations, ax):
-    """Plot Great circles
-    """
-        
-    alpha = np.exp(-len(stations.index)/500)
-    # alpha = 0.2
-        
-    first = True
-    for (lat_r,lon_r) in zip(stations["lat"], stations["lon"]):
-
-        if first:
-            ax.plot((lon_s,lon_r), (lat_s,lat_r), "g",transform=ccrs.Geodetic(), lw=1, alpha=alpha, label="great circle paths")
-            first = False
-
-        ax.plot((lon_s,lon_r), (lat_s,lat_r), "g",transform=ccrs.Geodetic(), lw=1, alpha=alpha)
-
-
-def plot_great_circles_color_az(lat_s, lon_s, stations, ax):
-    """Plot Great circles, idem with color dependant based on azimuth
+def plot_great_circles_color_depth(lat_s, lon_s, stations, coord_depth_crossing):
+    """Plot Great circles with color dependant based on azimuth when at a certain depth
     """
         
     alpha = np.exp(-len(stations.index)/500)
@@ -265,14 +242,20 @@ def plot_great_circles_color_az(lat_s, lon_s, stations, ax):
     scalarMap = matplotlib.cm.ScalarMappable(norm=cNorm, cmap="cool")
 
     first = True
-    for (lat_r,lon_r,az) in zip(stations["lat"], stations["lon"], stations["az"]):
+    for (lat_r,lon_r,az,lonlats_depth_cross) in zip(stations["lat"], stations["lon"], stations["az"], coord_depth_cross):
 
-        ax.plot((lon_s,lon_r), (lat_s,lat_r),transform=ccrs.Geodetic(), lw=1, alpha=alpha, color=scalarMap.to_rgba(az))
+        (lon1,lat1),(lon2,lat2) = lonlats_depth_cross
+
+        ax.plot((lon_s,lon1), (lat_s,lat1),transform=ccrs.Geodetic(), lw=1, alpha=alpha/2, color="g")
+
+        ax.plot((lon1,lon2), (lat1,lat2), transform=ccrs.Geodetic(), lw=1, alpha=alpha, color=scalarMap.to_rgba(az))
+
+        ax.plot((lon2,lon_r), (lat2,lat_r),transform=ccrs.Geodetic(), lw=1, alpha=alpha/2, color="g")
 
     ax.get_figure().colorbar(scalarMap, label="Azimuth [°]", shrink = 0.5)
 
 
-def plot_event(event, ax, proj):
+def plot_event(event, ax, proj, title=True):
     """Plot Event BeachBall"""
     
     # get event info
@@ -292,9 +275,9 @@ def plot_event(event, ax, proj):
     b.set_zorder(5)
     ax.add_collection(b)
     
-    # add event info as title
-    title = f"Event : {event.preferred_origin().time.date.strftime('%d %b %Y')} (Mw = {event.preferred_magnitude().mag})"
-    plt.title(title)
+    # # add event info as title
+    # title = f"Event : {event.preferred_origin().time.date.strftime('%d %b %Y')} (Mw = {event.preferred_magnitude().mag})"
+    # if title : plt.title(title)
     
     
 def plot_stations(stations, ax):    
@@ -355,6 +338,62 @@ class LowerThresholdOthographic(ccrs.Orthographic):
     def threshold(self):
         return 1e3
 
+def get_depths_path_xkm_over_CMB(stations, event, phases, height_km=200.0):
+    
+    """Return for each stations the coordinates of th epoints at which the path of the phase goes under height_km over the CMB"""
+    
+    # path_serial_file = "paths.pickle"
+    
+    # if os.path.exists(path_serial_file):
+    #     print(f">> Reading paths from {path_serial_file}")
+    #     with open(path_serial_file, 'rb') as f:
+    #         print(f"paths deserialized" )
+    #         paths_cache = pickle.load(f)
+            
+    #     # check that the cache contains all the asked phases
+    #     if all([p in paths_cache.keys() for p in phases]): return paths_cache
+    #     print(">> One on more phases missing in the cache, computation needed")
+    
+    print(">> Computing ray paths")
+
+    paths = get_ray_paths(
+        inventory=to_obspy_inventory(stations), catalog=Catalog([event]), 
+        phase_list=phases, 
+        taup_model="prem", 
+        coordinate_system="RTP"
+        )
+    
+
+    coord_depth_cross = []
+
+    
+    for gcircle,_,_,_,_,_,_ in paths:
+
+        try:
+        
+            r = gcircle[0,:]*r_earth_km
+            lat_r = 90 - gcircle[1,:]*180/np.pi 
+            lon_r = gcircle[2,:]*180/np.pi 
+
+            idx1 = 0
+            while r[idx1] > r_cmb_km + height_km:
+                idx1 += 1
+            idx2 = idx1 + 1
+            while r[idx2] < r_cmb_km + height_km:
+                idx2 += 1
+
+            # print(idx1,idx2,len(r))
+
+            coord_depth_cross.append(
+                [[lon_r[idx1], lat_r[idx1]],
+                [lon_r[idx2], lat_r[idx2]]]
+            )
+
+        except IndexError:
+            print("Issue with great circle indexing", gcircle.shape)
+
+    return coord_depth_cross
+
     
 if __name__ == "__main__":
     
@@ -363,13 +402,16 @@ if __name__ == "__main__":
         
     parser.add_argument('--receivers', type=str,help='receivers.dat file')
     parser.add_argument('--event', type=str,help='quakeML event file')
-    parser.add_argument("--ulvz", help="[lat,lon] of an ulvz", nargs=2, type=float)
+    parser.add_argument("--ulvz", help="[lat,lon,radius] of an ulvz", nargs=3, type=float)
 
     parser.add_argument('--hotspots', action='store_true',help='plot main hotspots.')
     parser.add_argument('--hotspots_names', action='store_true',help='plot main hotspots names.')
     parser.add_argument('--plates', action='store_true',help='plot main plates boundaries.')
+
+    parser.add_argument('--no-title',dest="no_title", action='store_true')
     
     parser.add_argument("--latlon", help="central latitude and longitude in degrees", nargs=2, type=float, default=[None,None])
+    parser.add_argument("--height", help="height above CMB to plot colored path", type=float, default=200.)
     parser.add_argument("-d", dest="dist_range", help="distance bounds", nargs=2, type=float, default=[0.0,180.0])
     
     parser.add_argument('-o', dest="outfile", type=str,help='out figure name')
@@ -405,31 +447,61 @@ if __name__ == "__main__":
     
     if args.hotspots: plot_hotspots(ax, write_names=args.hotspots_names)
     
-
-        
     if args.receivers and args.event: 
         
         # filter on distance
         dmin,dmax = args.dist_range
         if dmin > 0.0 or dmax < 180.0:
+
             ev_orig = event.preferred_origin()
             evla,evlon = ev_orig.latitude, ev_orig.longitude
-            stations = stations[(locations2degrees(evla,evlon,stations["lat"],stations["lon"]) >= dmin) & (locations2degrees(evla,evlon,stations["lat"],stations["lon"]) <= dmax)]
 
-        plot_great_circles_obspy(event,stations,ax,color_az=True)
+            get_dist = lambda row : locations2degrees(evla,evlon,row.lat,row.lon)
+
+            stations["dist"] = stations.apply(get_dist, axis=1)
+
+
+            stations = stations[(stations["dist"] >= dmin) & (stations["dist"] <= dmax)]
+
+            if stations.empty:
+                print("Warning : no stations respecting the distance criteria")
+
+        if not(stations.empty):
+
+            coord_depth_cross = get_depths_path_xkm_over_CMB(stations, event, ["S","Sdiff"], height_km=args.height)
+
+            origin = event.preferred_origin() or event.origins[0]
+            lon_s,lat_s = origin.longitude, origin.latitude
+
+            plot_great_circles_color_depth(lat_s,lon_s,stations,coord_depth_cross)
         
-    if args.event: plot_event(event,ax,proj)
+    if args.event: plot_event(event,ax,proj,title=not(args.no_title))
     
     if args.receivers: plot_stations(stations, ax)
     
     if args.ulvz:
-        lat,lon = args.ulvz
-        ax.scatter(lon, lat, marker="o", color="r", ec="k",lw=1.5, s = 100, transform = ccrs.PlateCarree(), label = "ULVZ", zorder=4)
+
+        lat,lon,radius = args.ulvz
+        ulvz_coord = geopy.Point(lat,lon)
+
+        # correction CMB -> surface
+
+        lats_ulvz,lons_ulvz = [],[]
+
+        for az in np.linspace(0.0, 360.0, 100):
+
+            point = geodesic(kilometers=radius).destination(ulvz_coord, bearing=az)
+            lats_ulvz.append(point.latitude)
+            lons_ulvz.append(point.longitude)
+
+        # ax.scatter(lon, lat, marker="o", color="r", ec="k",lw=1.5, s = 100, transform = ccrs.PlateCarree(), label = "ULVZ", zorder=4)
+
+        ax.plot(lons_ulvz,lats_ulvz,color="r",lw=2,transform=ccrs.Geodetic())
     
     
     ax.set_global()
     ax.coastlines()
-    ax.legend(loc='lower left')
+    # ax.legend(loc='lower left')
 
     
     # if args.event and args.receivers:

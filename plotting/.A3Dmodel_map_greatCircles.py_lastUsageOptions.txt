@@ -1,1 +1,0 @@
---receivers tests/receivers.dat --event tests/event.xml --hotspots

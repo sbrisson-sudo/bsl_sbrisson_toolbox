@@ -43,15 +43,14 @@ parser.add_argument("-c", dest="component", help="component to plot (R|T|Z)", ty
 parser.add_argument("-s", dest="scale", help="scaling of the traces", type=float, default=1.0)
 parser.add_argument("-o", dest="out_file", help="output figure name", type=str, default="")
 
-parser.add_argument("--norm", help="normalisation method", type=str, default="trace")
+parser.add_argument("--norm", help="normalisation method", type=str, default="stream")
 parser.add_argument("--title", dest="title", help="title to add to the figure (default : component)", type=str, default="")
 
 parser.add_argument("--phases", dest="phase_list", help="list of phases arrival to compute with taup and plot", nargs="+", type=str)
 parser.add_argument("--phase-ref", dest="phase_ref", help="phase to use for time reference", type=str, nargs="+")
 
-parser.add_argument("--event-metadata", dest="event_metadata", help="add text with event metadata", action="store_true")
-
 parser.add_argument("--station-names", dest="plot_station_name", help="display station names", action="store_true")
+parser.add_argument("--event-metadata", dest="event_metadata", help="add text with event metadata", action="store_true")
 parser.add_argument("--fill", help="fill the traces (blue and red)", action="store_true")
 
 args = parser.parse_args()
@@ -89,6 +88,12 @@ if args.dist_range[0] or args.dist_range[0]:
     stream = select_distance(stream, d1, d2)
     print(f"Select : {nb_traces  - stream.count()} traces removed based on distance criteria.")
 
+# get min_max distances
+dmin,dmax = 180., 0. 
+for tr in stream:
+    if tr.stats.distance < dmin: dmin = tr.stats.distance
+    if tr.stats.distance > dmax: dmax = tr.stats.distance
+
 # ++ align traces on arrival time ++
 if args.phase_ref:
     
@@ -115,24 +120,24 @@ if args.time_range[0] or args.time_range[1]:
 
 
 # ++ compute azimuth  = angle(station,source,ulvz) ++
-# def get_angle(source, ulvz, station):
-#     """Compute the angle between the ulvz and the station with respect to the source.
+def get_angle(source, ulvz, station):
+    """Compute the angle between the ulvz and the station with respect to the source.
 
-#     Args:
-#         source  : (lat,lon) source, in degrees
-#         ulvz    : (lat,lon) source, in degrees
-#         station : (lat,lon) source, in degrees
-#     """
+    Args:
+        source  : (lat,lon) source, in degrees
+        ulvz    : (lat,lon) source, in degrees
+        station : (lat,lon) source, in degrees
+    """
         
-#     # compute distances between event - pivot - station
-#     Δsource_station = locations2degrees(*source, *station)
-#     Δsource_ulvz = locations2degrees(*source, *ulvz)
-#     Δulvz_station = locations2degrees(*ulvz, *station)
+    # compute distances between event - pivot - station
+    Δsource_station = locations2degrees(*source, *station)
+    Δsource_ulvz = locations2degrees(*source, *ulvz)
+    Δulvz_station = locations2degrees(*ulvz, *station)
     
-#     # compute azimuth
-#     az = arccos((cos(Δulvz_station*pi/180.) - cos(Δsource_ulvz*pi/180.)*cos(Δsource_station*pi/180.)) / (sin(Δsource_ulvz*pi/180.)*sin(Δsource_station*pi/180.)))*180./pi
+    # compute azimuth
+    az = arccos((cos(Δulvz_station*pi/180.) - cos(Δsource_ulvz*pi/180.)*cos(Δsource_station*pi/180.)) / (sin(Δsource_ulvz*pi/180.)*sin(Δsource_station*pi/180.)))*180./pi
             
-#     return az
+    return az
                 
 for tr in stream:
         
@@ -158,10 +163,13 @@ for tr in stream:
 
     
     tr.stats.azimuth *= 1000. # routine de plot en km
-
+        
+# generate colormap
+azimuths = [tr.stats.azimuth/1000. for tr in stream]
+az_min = min(azimuths)
+az_max = max(azimuths)
+    
     # print(f"{station_latlon} : az = {tr.stats.azimuth}")
-
-
 # ++ select on azimuth ++
 def select_azimuth(stream, a1, a2):
     """Select traces in stream based on azimuth."""
@@ -173,8 +181,11 @@ def select_azimuth(stream, a1, a2):
         stream.remove(trace)
     return stream
 
-if args.az_range[0] or args.az_range[0]:
+if args.az_range[0] or args.az_range[1]:
     az1,az2 = args.az_range
+    az_min = az1 
+    az_max = az2
+
     assert(az1 < az2)
     stream = select_azimuth(stream, az1*1000, az2*1000)
     print(f"Select : {nb_traces  - stream.count()} traces removed based on azimuth criteria.")
@@ -204,26 +215,88 @@ stream.plot(
     orientation = "horizontal"
     )
 
+
+from custom_obspy_imaging_waveform import WaveformPlotting
+import matplotlib
+import numpy as np
+
+
+cNorm  = matplotlib.colors.Normalize(vmin=az_min, vmax=az_max)
+scalarMap = matplotlib.cm.ScalarMappable(norm=cNorm, cmap="cool")
+
+def get_max_abs_stream(stream):
+    """Return the absolute maximum value of all the traces data"""
+    norm_factor = 0.
+    for tr in stream:
+        tr_max = np.abs(tr.data.max())
+        if tr_max > norm_factor:
+            norm_factor = tr_max
+    return norm_factor
+
+norm_factor1 = get_max_abs_stream(stream)
+
+t1,t2 = args.time_range
+t3 = t1 + 0.1*(t2-t1)
+start_time = origin_time_event
+stream.trim(start_time + t1, start_time + t3)
+
+norm_factor2 = get_max_abs_stream(stream)
+
+scale2 = args.scale * norm_factor2 / norm_factor1
+
+waveform = WaveformPlotting(
+    stream=stream, 
+    type='section', 
+    norm_method = args.norm,
+    scale = scale2,
+    show=False, 
+    reftime = origin_time_event,
+    fig=fig,
+    fillcolors = ("r","b") if args.fill else (None,None),
+    orientation = "horizontal",
+    color="distance",
+    cmap=scalarMap.to_rgba,
+    linewidth = 2
+    )
+
+waveform.plot_waveform()
+
+plt.colorbar(scalarMap, label="Azimuth [°]", shrink=0.5)
+
 switch_az_dist(stream)
 
+
+# add event info
+
 ax = fig.axes[0]
+
+if args.event_metadata:
+
+    from matplotlib.offsetbox import AnchoredText
+
+    time_str = origin_time_event.date.strftime('%Y/%m/%d')
+
+    event_metadata_str = f"Event metadata :\n- latitude {lat_s:.1f}°\n- longitude {lon_s:.1f}°\n- depth {dep_s:.1f}km\n- time {time_str}"
+
+    props = dict(boxstyle='round', facecolor="white", edgecolor="#D7D7D7", alpha=0.75) # these are the text box parameters
+    anchored_text = AnchoredText(event_metadata_str, loc=4, frameon=False, prop=dict(bbox=props))
+    ax.add_artist(anchored_text)
+
+
 ax.set_ylabel("Azimuth [°]")
 ax.grid(True)
 
 # ++ identify phases by computing arrival time for the higher azimuth ++
 if args.phase_list:
     
-    # # find max azimuth trace
-    # tr_max = stream[0]
-    # az_max = tr_max.stats.azimuth
-    # for tr in stream[1:]:
-    #     if tr.stats.azimuth > az_max:
-    #         tr_max = tr
-    #         az_max = tr_max.stats.azimuth
-            
-
+    # find max azimuth trace
     tr_max = stream[0]
-
+    az_max = tr_max.stats.azimuth
+    for tr in stream[1:]:
+        if tr.stats.azimuth > az_max:
+            tr_max = tr
+            az_max = tr_max.stats.azimuth
+            
     # get arrival times
     obspy_phase_lists = ["ttp", "tts", "ttbasic", "tts+", "ttp+", "ttall"]
     if len(args.phase_list) == 1 and args.phase_list[0] in obspy_phase_lists:
@@ -243,7 +316,7 @@ if args.phase_list:
             )
         
     colors=['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52']
-
+    
     # compute ref phase tim arrival
     t_ref = 0.0
     if args.phase_ref:
@@ -270,22 +343,6 @@ if args.plot_station_name:
         # print(tr.stats.station, tr.stats.distance)
         ax.text(tr.stats.distance/1000, 1.0, tr.stats.station, transform=transform, zorder=10, va="bottom", ha="center", fontfamily = "monospace", rotation = -45.)
 
-# add event info
-
-ax = fig.axes[0]
-
-if args.event_metadata:
-
-    from matplotlib.offsetbox import AnchoredText
-
-    time_str = origin_time_event.date.strftime('%Y/%m/%d')
-
-    event_metadata_str = f"Event metadata :\n- latitude {lat_s:.1f}°\n- longitude {lon_s:.1f}°\n- depth {dep_s:.1f}km\n- time {time_str}"
-
-    props = dict(boxstyle='round', facecolor="white", edgecolor="#D7D7D7", alpha=0.75) # these are the text box parameters
-    anchored_text = AnchoredText(event_metadata_str, loc=4, frameon=False, prop=dict(bbox=props))
-    ax.add_artist(anchored_text)
-
 # ++ title ++
 component_names = {
     "Z" : "Vertical",
@@ -293,7 +350,15 @@ component_names = {
     "T" : "Transverse",
 }    
 prefix = args.title+" - " if args.title else ""
-fig.suptitle(f"{prefix}{component_names[args.component]}")
+title = f"{prefix}{component_names[args.component]} component"
+
+# add distance information 
+
+title += f" - $\Delta\in$[{dmin:.0f}°,{dmax:.0f}°]"
+
+fig.suptitle(title)
+
+
 
 # ++ showing / saving ++
 if args.out_file:

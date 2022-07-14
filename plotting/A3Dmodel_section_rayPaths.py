@@ -5,10 +5,10 @@ Created on Mon Apr 18 2022
 @author: Sylvain Brisson sylvain.brisson@ens.fr
 """
 
-import re
 import numpy as np
-from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature  
 
 plt.style.use("seaborn-paper")
 
@@ -21,7 +21,7 @@ sys.path.append(pathbase)
 
 from common.setup import models_path_default
 from common.my_io import read_receivers, to_obspy_inventory
-from common.barycenter_sphere import barycenter_on_sphere, compute_mean_point_stations_event
+from common.barycenter_sphere import barycenter_on_sphere
 
 
 from Model1D import Model1D
@@ -33,14 +33,11 @@ from Sphere import delaz, gc_minor
 
 import argparse
 
-from obspy.taup import TauPyModel
 from obspy.core.event import read_events
 from obspy.taup.ray_paths import get_ray_paths
 from obspy.core.event import Catalog
 
-from obspy.geodetics.base import gps2dist_azimuth,locations2degrees,degrees2kilometers
-import geopy
-from geopy.distance import geodesic
+from obspy.geodetics.base import gps2dist_azimuth
 
 import pickle
 
@@ -147,7 +144,7 @@ def plot_paths(event, stations, ax, lonlat1, phases=["S", "Sdiff"]):
     # filter over great circle distance
         
     ax.scatter(evDist*np.pi/180, rEarth-evdepth/1000, zorder=10, clip_on=False, marker="*", color="r", ec="k", s=200, lw=1.5)
-    
+
     stations["dist"] = stations.apply(
         lambda row: delaz((row["lon"],row["lat"]),lonlat1)[0],
         axis=1
@@ -243,10 +240,11 @@ if __name__ == "__main__":
     # setup command-line args
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--stations', type=str,help='receivers.dat file')
+    parser.add_argument('--receivers', type=str,help='receivers.dat file')
     parser.add_argument('--event', type=str,help='quakeML event file')
     parser.add_argument('--lonlat1', type=float,help='first profile point',nargs=2,required=True)
     parser.add_argument('--lonlat2', type=float,help='first profile point',nargs=2,required=True)
+    parser.add_argument('--az', type=float,help='min max azimuth',nargs=2, default=[0.,360.])
     parser.add_argument('--ulvz-lonlat', dest='ulvz', type=float,help='ulvz position',nargs=2)
     
     parser.add_argument("-dmax", help="maximum station-section deistance to plot stations", type=float, default=180.0)
@@ -258,19 +256,36 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # getting station positions
-    if args.stations: stations = read_receivers(args.stations)
+    if args.receivers: stations = read_receivers(args.receivers)
 
     # getting event information
     if args.event: event = read_events(args.event)[0]
+
+    origin = event.preferred_origin()
+
+    stations["az"] = stations.apply(
+        lambda stn: gps2dist_azimuth(stn.lat, stn.lon, origin.latitude, origin.longitude)[2],
+        axis = 1
+        )
+
+    # filter on azimuth
+
+    azmin,azmax = args.az
+
+    if azmin < 0.: azmin += 360.
+    if azmax < 0.: azmax += 360.
+    stations = stations[(stations.az >= azmin) & (stations.az <= azmax)]
     
+
     # setting/computing limits points of profil
     
     lonlat1 = args.lonlat1
     lonlat2 = args.lonlat2
+
     
     # bellow is an attempt to automatically choose the end points of the section
 
-    # if (not(any(lonlat1)) or not(any(lonlat2))) and args.stations and args.event :
+    # if (not(any(lonlat1)) or not(any(lonlat2))) and args.receivers and args.event :
         
     #     # compute mean point of stations
     #     lat_mean_stn,lon_mean_stn = barycenter_on_sphere(stations["lat"],stations["lon"])
@@ -336,17 +351,44 @@ if __name__ == "__main__":
         
     phases = args.phase_list
 
-
-    
     ax = plot_model(args.lonlat1, args.lonlat2, modelConfig, interpConfig, vmax=4)
     
-    if args.event and args.stations:
+    if args.event and args.receivers:
         plot_paths(event, stations, ax, args.lonlat1, phases=phases)
         
     if args.ulvz : plot_ulvz(args.ulvz, args.lonlat1, ax)
         
     plt.setp(ax, rorigin=0, rmin=3480., rmax=rEarth)
     plt.legend(loc=10, bbox_to_anchor=(0., 0.4, 0.05, 0.5), title="Phases :")
+
+
+    # append subax with profil
+
+    lat0,lon0 = barycenter_on_sphere([args.lonlat1[1],args.lonlat2[1]],[args.lonlat1[0],args.lonlat2[0]])
+
+    fig = plt.gcf()
+
+    # add box with orthographic projection
+    sub_ax = fig.add_axes([0.65, 0.45, 0.2, 0.2],projection=ccrs.Orthographic(central_latitude=lat0, central_longitude=lon0))
+    sub_ax.add_feature(cfeature.LAND)
+    sub_ax.add_feature(cfeature.OCEAN)
+
+    sub_ax.scatter(stations["lon"], stations["lat"], marker=".", color="darkgreen", s = 10, transform = ccrs.PlateCarree())
+    sub_ax.scatter(origin.longitude, origin.latitude, marker="*", color="red",s=100, transform = ccrs.PlateCarree(), ec="k", zorder=10)
+    
+    lon1,lat1 = args.lonlat1
+    lon2,lat2 = args.lonlat2
+
+    sub_ax.scatter([lon1,lon2],[lat1,lat2], transform = ccrs.PlateCarree())
+    
+    sub_ax.plot((lon1,lon2), (lat1,lat2), "r",transform=ccrs.Geodetic())
+        
+    sub_ax.set_global()
+
+    # set figure title 
+    dt_str = origin.time.datetime.strftime("%d %b %Y")
+    sub_ax.set_title(f"Event : {dt_str}")
+    
 
     if args.outfile:
         print(f"Saving {args.outfile}")

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+"""
+Read the traces ASCII files from 2 runs using exactly the same stations, time information
+compute the difference and save it to an obspy pickle file"""
+
 import numpy as np
 import pandas as pd
 from numpy import pi, cos, sin, arccos
@@ -21,7 +25,7 @@ from parse_macromesh import parse_macromesh
 # parsing arguments
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--trace-dir", dest="trace_dir", help="traces files directory", type=str, default="traces")
+parser.add_argument("trace_dirs", help="2 traces files directories", type=str, nargs=2)
 parser.add_argument("-o", dest="out_file", help="output file prefix", type=str, required = True)
 parser.add_argument("-r", dest="receivers_file", help="path to the receivers.dat file", type=str, default="receivers.dat")
 parser.add_argument("-m", dest="macromesh_file", help="path to the macromesh.dat file", type=str, default="macromesh.dat")
@@ -64,84 +68,38 @@ lon_s = coord["longitude"]
 
 t0_s = config["source"]["origin_time"]
 
-
-
-# def read_macromesh_dat(macromesh_file):
-#     global depth_km, lat_s, lon_s, t0_s
-#     with open(macromesh_file, "r") as io:
-#         lines = io.read().splitlines()
-#         i = 84
-#         depth_km = Rt - float(lines[i-3])/1000
-#         lat_s = 90 - float(lines[i-2]) # colatitude
-#         lon_s = float(lines[i-1])
-#         i = 117
-#         t0_s = float(lines[i+1])
-#     print("macromesh.dat read.")
-
-# def read_recepteurs_info(recepteurs_info_file):
-#     global depth_km, lat_s, lon_s, t0_s
-#     with open(recepteurs_info_file, "r") as io:
-#         lines = io.read().splitlines()
-#         depth_km,lat_s,lon_s = map(float, lines[5].split())
-#         lat_s = 90.0 - lat_s
-#         depth_km = Rt - depth_km/1000
-#         t0_s = 450.0 # pas d'info sur t0
-#     print("recepteurs.info read.")
-
-# def read_macromesh_json(macromesh_file):
-#     global depth_km, lat_s, lon_s, t0_s, fmax
-#     with open(macromesh_file, "r") as f:
-#         data = json.load(f)
-#         coords = data["source"]["coordinates"]
-#         depth_km = Rt - coords["radius"]/1000.0
-#         lat_s = 90. - coords["colatitude"]
-#         lon_s = coords["longitude"]
-#         t0_s =  data["source"]["origin_time"]
-#     print("macromesh.json read.")
-        
-        
-# if args.macromesh_file:
-#     if os.path.splitext(args.macromesh_file)[-1] == ".dat":
-#         read_macromesh_dat(args.macromesh_file)
-#     else:
-#         read_macromesh_json(args.macromesh_file)
-
-# elif args.recepteurs_info_file:
-#     read_recepteurs_info(args.recepteurs_info_file)
-# elif os.path.exists("macromesh.json"):
-#     read_macromesh_json("macromesh.json")
-# elif os.path.exists("macromesh.dat"):
-#     read_macromesh_dat("macromesh.dat")
-# elif os.path.exists("recepteurs.info"):
-#     read_recepteurs_info("recepteurs.info")
-# else:
-#     print("No file to read source coordinate found, exiting.")
-#     exit()
-
 print(f"Event at ({lat_s:.1f}°,{lon_s:.1f}°), {depth_km:.0f}km, t0 = {t0_s}s.")
 
-# reading traces data inside Trace obspy type
+# reading traces data
+# computing difference
+# saving differene into an obspy stream object
 traces = []
 starttime = UTCDateTime()
-files = os.listdir(args.trace_dir)
+
+trace_dir1, trace_dir2 = args.trace_dirs
+
+files1 = os.listdir(trace_dir1)
+files2 = os.listdir(trace_dir2)
 
 d1,d2 = args.dist_range
 
-for i,f in enumerate(files):
+for i,f in enumerate(files1):
     
     re_search = re.search(trace_re, f)
+
     if re_search:
         
-        print(f"Converting {f} ({i/len(files)*100:.0f}%).", end="\r")
+        print(f"Converting {f} ({i/len(files1)*100:.0f}%).", end="\r")
         
         chan = components[re_search.group(1)]
         netw = re_search.group(2)
         stat = re_search.group(3)
         
-        data = np.loadtxt(os.path.join(args.trace_dir, f))
+        data1 = np.loadtxt(os.path.join(trace_dir1, f))
+        data2 = np.loadtxt(os.path.join(trace_dir2, f))
         
-        sr = 1/(data[1,0]-data[0,0]) # sampling rate in hertz
-        N = data.shape[0]
+        sr = 1/(data1[1,0]-data1[0,0]) # sampling rate in hertz
+        N = data1.shape[0]
         
         lat_r,lon_r = stations_coord[stat]
         Δ = locations2degrees(lat_r,lon_r,lat_s,lon_s)
@@ -166,10 +124,9 @@ for i,f in enumerate(files):
 
             traces.append(
                 # Trace(data = data[:,1], header = stats).slice(UTCDateTime()+t0_s)                
-                Trace(data = data[:,1], header = stats)
+                Trace(data = data2[:,1] - data1[:,1], header = stats)
             )
             
-print()
             
                         
 if len(traces) == 0:
@@ -178,7 +135,7 @@ if len(traces) == 0:
         
 stream = Stream(traces = traces)
 
-out_file = args.out_file + ".pkl"
+out_file = args.out_file + ".pickle"
 
 if os.path.exists(out_file):
     if input(f"File {out_file} exists, overwrite ? [y/n] ") != "y": exit()

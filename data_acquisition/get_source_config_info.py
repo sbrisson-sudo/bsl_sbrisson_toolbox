@@ -24,7 +24,7 @@ def write_macromesh_source_info(event):
     Rt_m = 6371000.
     sourceDatfile = "source.dat"
     
-    ev_colat = ev_lat + 90.
+    ev_colat = 90. - ev_lat 
     ev_radius = Rt_m - ev_dep
     
     factor_mt = 1e-15
@@ -32,11 +32,11 @@ def write_macromesh_source_info(event):
     with open(sourceDatfile, 'w') as out:
 
         out.write(
-        f"""# Position (colatitude(°), longitude(°), radius(m))
+        f"""# point source coordinates r (radius, m), theta (colatitude, °), phi (longitude, °)
+{ev_radius}
 {ev_colat:8.4f}
 {ev_lon:8.4f}
-{ev_radius}
-# Centroid Moment Tensor ({factor_mt:.0e}N.m) (m_rr,m_tt,m_pp,m_rt,m_rp,m_tp)
+# Centroid Moment Tensor ({factor_mt:.0e}N.m) (Mrr,Mtt,Mpp,Mrt,Mrp,Mtp)
 {tensor.m_rr*factor_mt:.4e}
 {tensor.m_tt*factor_mt:.4e}
 {tensor.m_pp*factor_mt:.4e}

@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sqlalchemy import true
 
-plt.style.use("publication")
+# plt.style.use("publication")
 
 from numpy import cos, sin, pi
 import pandas as pd
@@ -207,11 +207,11 @@ if __name__ == "__main__":
     tk = np.linspace(0.0, 2*pi, 100) # takeoff angle range
     
     rp_p_az  = np.abs(radiation_pattern_P(φ, δ, λ, az, np.pi/2))
-    rp_p_tk  = np.abs(radiation_pattern_P(φ, δ, λ, 0.0, tk))
+    rp_p_tk  = np.abs(radiation_pattern_P(φ, δ, λ, az_ref, tk))
     rp_sh_az = np.abs(radiation_pattern_SH(φ, δ, λ, az, np.pi/2))
-    rp_sh_tk = np.abs(radiation_pattern_SH(φ, δ, λ, 0.0, tk))
+    rp_sh_tk = np.abs(radiation_pattern_SH(φ, δ, λ, az_ref, tk))
     rp_sv_az = np.abs(radiation_pattern_SV(φ, δ, λ, az, np.pi/2))
-    rp_sv_tk = np.abs(radiation_pattern_SV(φ, δ, λ, 0.0, tk))
+    rp_sv_tk = np.abs(radiation_pattern_SV(φ, δ, λ, az_ref, tk))
     
     rp_max = max([rp.max() for rp in (rp_p_az, rp_p_tk, rp_sh_az, rp_sh_tk, rp_sv_az, rp_sv_tk)])
     
@@ -233,17 +233,21 @@ if __name__ == "__main__":
     c1, c2 = colors[:2]
     
     for ax in axes[0,:]: 
-        ax.set_yticks([],[])
+        ax.set_yticks([]) 
+        ax.set_yticklabels([]) 
         ax.set_theta_zero_location("N")
         ax.set_theta_direction(-1)
-        ax.set_xticks([0, pi/2, pi, 3*pi/2],["N","E","S","W"])
+        ax.set_xticks([0, pi/2, pi, 3*pi/2]) 
+        ax.set_xticklabels(["N","E","S","W"])
         ax.set_ylim([0., 1.1])
         
     for ax in axes[1,:]: 
-        ax.set_yticks([],[])
+        ax.set_yticks([])
+        ax.set_yticklabels([])
         ax.set_theta_zero_location("N")
         ax.set_theta_direction(-1)
-        ax.set_xticks([0, pi/2, pi, 3*pi/2],["Up",f"az={az_ref:.1f}","Down",""])
+        ax.set_xticks([0, pi/2, pi, 3*pi/2])
+        ax.set_xticklabels(["Up",f"az={az_ref*180/np.pi:.1f}°","Down",""])
         ax.set_ylim([0., 1.1])
 
     
