@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
 """
+
 Read the traces ASCII files from 2 runs using exactly the same stations, time information
-compute the difference and save it to an obspy pickle file"""
+compute the difference and save it to an obspy pickle file
+
+"""
 
 import numpy as np
 import pandas as pd

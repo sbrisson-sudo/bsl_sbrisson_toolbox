@@ -10,10 +10,12 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature  
 
-plt.style.use("seaborn-paper")
+# plt.style.use("seaborn-paper")
+plt.rcParams.update({'font.size': 13})
 
 import os
 import sys
+
 
 pathdir = os.path.dirname(__file__)
 pathbase = os.path.abspath(os.path.join(pathdir, os.pardir))
@@ -22,7 +24,6 @@ sys.path.append(pathbase)
 from common.setup import models_path_default
 from common.my_io import read_receivers, to_obspy_inventory
 from common.barycenter_sphere import barycenter_on_sphere
-
 
 from Model1D import Model1D
 from ModelA3d import ModelA3d
@@ -37,7 +38,7 @@ from obspy.core.event import read_events
 from obspy.taup.ray_paths import get_ray_paths
 from obspy.core.event import Catalog
 
-from obspy.geodetics.base import gps2dist_azimuth
+from obspy.geodetics.base import gps2dist_azimuth, locations2degrees
 
 import pickle
 
@@ -114,19 +115,19 @@ def plot_model(lonlat1, lonlat2, modelConfig, interpConfig, vmax=3.0, param='S')
     # + add lonlat +
         
     lon,lat = lonlat1
-    ax.annotate(f"({lat:.0f}°N,{lon:.0f}°W)", xy=(t.min()*np.pi/180.,r.max()), annotation_clip=False, horizontalalignment='right', verticalalignment='bottom',) 
-    lon,lat = lonlat2
-    ax.annotate(f"({lat:.0f}°N,{lon:.0f}°W)", xy=(t.max()*np.pi/180.,r.max()), annotation_clip=False, horizontalalignment='left', verticalalignment='bottom',) 
+    # ax.annotate(f"({lat:.0f}°N,{lon:.0f}°W)", xy=(t.min()*np.pi/180.,r.max()), annotation_clip=False, horizontalalignment='right', verticalalignment='bottom',) 
+    # lon,lat = lonlat2
+    # ax.annotate(f"({lat:.0f}°N,{lon:.0f}°W)", xy=(t.max()*np.pi/180.,r.max()), annotation_clip=False, horizontalalignment='left', verticalalignment='bottom',) 
         
     ax.grid(False)
     
     # + add colorbar +
     
-    m = plt.cm.ScalarMappable(cmap=cmap)
-    m.set_array(x)
-    m.set_clim(-vmax, vmax)
-    ticks = np.arange(-int(vmax-0.1), int(vmax))
-    plt.colorbar(m, orientation="horizontal", shrink=0.3, pad=-0.33, aspect=10, boundaries=np.linspace(-vmax, vmax, nlev+1), ticks=ticks, label=f"$V_S$ anomaly (%) - model {modelConfig['name']}")
+    # m = plt.cm.ScalarMappable(cmap=cmap)
+    # m.set_array(x)
+    # m.set_clim(-vmax, vmax)
+    # ticks = np.arange(-int(vmax-0.1), int(vmax))
+    # plt.colorbar(m, orientation="horizontal", shrink=0.3, pad=-0.33, aspect=10, boundaries=np.linspace(-vmax, vmax, nlev+1), ticks=ticks, label=f"$V_S$ anomaly (%) - model {modelConfig['name']}")
     
     
     return ax
@@ -206,7 +207,7 @@ def get_paths(stations, event, phases, lonlat1):
     return paths_cache
     
     
-def plot_ulvz(lonlat_ulvz, lonlat1, ax):
+def plot_ulvz_simple(lonlat_ulvz, lonlat1, ax):
     
     dist = delaz(lonlat_ulvz, lonlat1)[0]   
     ax.scatter(dist*np.pi/180., 3480., marker="o", color="r", ec='k', s=200, lw=1.5, zorder=10)
@@ -247,9 +248,13 @@ if __name__ == "__main__":
     parser.add_argument('--az', type=float,help='min max azimuth',nargs=2, default=[0.,360.])
     parser.add_argument('--ulvz-lonlat', dest='ulvz', type=float,help='ulvz position',nargs=2)
     
-    parser.add_argument("-dmax", help="maximum station-section deistance to plot stations", type=float, default=180.0)
+    # parser.add_argument("-dmax", help="maximum station-section deistance to plot stations", type=float, default=180.0)
     
     parser.add_argument("--phases", dest="phase_list", help="list of phases arrival to compute with taup and plot", nargs="+", type=str, default=["S", "Sdiff"])
+    parser.add_argument("-d", dest="dist_range", help="distance bounds", nargs=2, type=float, default=[0.0,180.0])
+
+    parser.add_argument("--ulvz", help="[lat,lon,radius,heigh] of an ulvz", nargs=4, type=float)
+
     
     parser.add_argument('-o', dest="outfile", type=str,help='out figure name')
     
@@ -260,6 +265,24 @@ if __name__ == "__main__":
 
     # getting event information
     if args.event: event = read_events(args.event)[0]
+
+    if args.receivers and args.event:
+        # filter on distance
+        dmin,dmax = args.dist_range
+        if dmin > 0.0 or dmax < 180.0:
+
+            ev_orig = event.preferred_origin()
+            evla,evlon = ev_orig.latitude, ev_orig.longitude
+
+            get_dist = lambda row : locations2degrees(evla,evlon,row.lat,row.lon)
+
+            stations["dist"] = stations.apply(get_dist, axis=1)
+
+            stations = stations[(stations["dist"] >= dmin) & (stations["dist"] <= dmax)]
+
+            if stations.empty:
+                print("Warning : no stations respecting the distance criteria")
+
 
     origin = event.preferred_origin()
 
@@ -356,10 +379,28 @@ if __name__ == "__main__":
     if args.event and args.receivers:
         plot_paths(event, stations, ax, args.lonlat1, phases=phases)
         
-    if args.ulvz : plot_ulvz(args.ulvz, args.lonlat1, ax)
+    if args.ulvz : 
+        # plot_ulvz_simple(args.ulvz, args.lonlat1, ax)
+        lat_ulvz,lon_ulvz,radius,heigh = args.ulvz
+
+        exag_heigh = 1.
+        h = heigh * exag_heigh
+
+        lonref,latref = lonlat1
+        dist = locations2degrees(lat_ulvz,lon_ulvz,latref,lonref)
+
+        ddist = radius * 360./(2*np.pi*3480.)
+
+        x_list = np.linspace(dist-ddist, dist+ddist,10) * np.pi/180
+        x_list = np.concatenate([x_list,x_list[::-1],[(dist-ddist)*np.pi/180]])
+
+        y_list = np.concatenate([np.ones(10)*3480,np.ones(10)*(3480+h),[3480]])
+
+        plt.plot(x_list,y_list,"r", lw=1,clip_on=False)
+
         
     plt.setp(ax, rorigin=0, rmin=3480., rmax=rEarth)
-    plt.legend(loc=10, bbox_to_anchor=(0., 0.4, 0.05, 0.5), title="Phases :")
+    # plt.legend(loc=10, bbox_to_anchor=(0., 0.4, 0.05, 0.5), title="Phases :")
 
 
     # append subax with profil
@@ -369,7 +410,7 @@ if __name__ == "__main__":
     fig = plt.gcf()
 
     # add box with orthographic projection
-    sub_ax = fig.add_axes([0.65, 0.45, 0.2, 0.2],projection=ccrs.Orthographic(central_latitude=lat0, central_longitude=lon0))
+    sub_ax = fig.add_axes([0.65, 0.55, 0.2, 0.2],projection=ccrs.Orthographic(central_latitude=lat0, central_longitude=lon0))
     sub_ax.add_feature(cfeature.LAND)
     sub_ax.add_feature(cfeature.OCEAN)
 
@@ -379,15 +420,15 @@ if __name__ == "__main__":
     lon1,lat1 = args.lonlat1
     lon2,lat2 = args.lonlat2
 
-    sub_ax.scatter([lon1,lon2],[lat1,lat2], transform = ccrs.PlateCarree())
+    # sub_ax.scatter([lon1,lon2],[lat1,lat2], transform = ccrs.PlateCarree())
     
-    sub_ax.plot((lon1,lon2), (lat1,lat2), "r",transform=ccrs.Geodetic())
+    sub_ax.plot((lon1,lon2), (lat1,lat2), "r-|",transform=ccrs.Geodetic())
         
     sub_ax.set_global()
 
     # set figure title 
-    dt_str = origin.time.datetime.strftime("%d %b %Y")
-    sub_ax.set_title(f"Event : {dt_str}")
+    # dt_str = origin.time.datetime.strftime("%d %b %Y")
+    # sub_ax.set_title(f"Event : {dt_str}")
     
 
     if args.outfile:

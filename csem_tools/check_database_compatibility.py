@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+"""
+Read a macromesh file and the files from the sol_ana (DtN operators database)
+to check if the database is commpatible with the asked configuration
+"""
+
 from parse_macromesh import parse_macromesh
 import os
 

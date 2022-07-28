@@ -186,14 +186,15 @@ if args.phase_list:
                 phase_arrival_time[phase][i] -= ref_phase_arr_time[np.where(dist == d)[0][0]]
 
 
+
     colors=['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52']
     
     # for phase in phase_list:
     #     print(f"[debug] {phase} first arrival : Δ = {phase_arrival_dist[phase][0]:.2f}°, t = t0+{phase_arrival_time[phase][0]:.0f}s")
     
     for c,phase in zip(colors,phase_list):
-        ax.plot(phase_arrival_dist[phase], np.array(phase_arrival_time[phase]), c="w", lw=3)
-        ax.plot(phase_arrival_dist[phase], np.array(phase_arrival_time[phase]), label=phase, c=c, lw=2)
+        ax.plot(phase_arrival_dist[phase], np.array(phase_arrival_time[phase]), c="w", lw=3, zorder=1)
+        ax.plot(phase_arrival_dist[phase], np.array(phase_arrival_time[phase]), label=phase, c=c, lw=2, zorder=1)
 
     ax.legend(title = f"Taup model : {model_name}")
     
@@ -205,7 +206,7 @@ component_names = {
 }    
 
 prefix = args.title+" - " if args.title else ""
-fig.suptitle(f"{prefix}{component_names[args.component]}")
+# fig.suptitle(f"{prefix}{component_names[args.component]}")
 
 # showing / saving
 if args.out_file:

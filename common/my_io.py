@@ -17,12 +17,29 @@ from obspy.core.inventory.station import Station
 
 def read_receivers(file):
 
-    """Load the receivers information from a receivers.dat or a receivers.csv"""
+    """
+    Load the receivers information from a receivers.dat tp a pandas dataframe
+    """
 
     data = pd.read_csv(file, header = 2, sep = "\s+")
     data.rename(columns = {'lon:':'lon'}, inplace = True)
     
     return data
+
+def write_receivers(stations, out_file = "receivers.dat"):
+    """
+    Write the dataframe to a receivers.dat file
+    """
+
+    with open(out_file, 'w') as f:
+
+        f.write(f"Number of stations:\n{len(stations.index)}\nnw stn lat lon:\n")
+
+        for index, row in stations.iterrows():
+
+            f.write(f"{row['nw']:<2} {row['stn'][:4]:<4} {row['lat']:8.4f}  {row['lon']:8.4f}\n")
+
+
 
 def to_obspy_inventory(stations):
     """Convert from the stations dataframe load from receivers.dat to a obspy station inventory"""

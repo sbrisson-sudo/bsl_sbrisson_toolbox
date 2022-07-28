@@ -1,31 +1,12 @@
 #!/usr/bin/env python
 
 """
-Filter a obspy stream object
+bandpass filter a obspy stream object
 """
 
-import numpy as np
-from numpy.fft import fft
-
-import matplotlib.pyplot as plt
-# plt.style.use("myStyle")
-
-import pandas as pd
-
-import re
-
-import sys, os
-
+import os
 import argparse 
-
 from obspy import read
-
-# CONFIGURATION
-
-# bounds frequencies (mHz)
-f1 = 0.01
-f2 = 0.5
-
 
 def main():
     

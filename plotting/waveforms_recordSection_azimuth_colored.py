@@ -20,6 +20,8 @@ import  os
 import matplotlib.pyplot as plt
 from matplotlib.transforms import blended_transform_factory
 
+plt.rcParams.update({'font.size': 20})
+
 
 from obspy.core import read
 from obspy.taup import TauPyModel
@@ -52,6 +54,12 @@ parser.add_argument("--phase-ref", dest="phase_ref", help="phase to use for time
 parser.add_argument("--station-names", dest="plot_station_name", help="display station names", action="store_true")
 parser.add_argument("--event-metadata", dest="event_metadata", help="add text with event metadata", action="store_true")
 parser.add_argument("--fill", help="fill the traces (blue and red)", action="store_true")
+parser.add_argument("--colorbar", help="add azimuth colorbar", action="store_true")
+
+parser.add_argument("--stn-list", dest="station_list", help="station list file", type=str)
+
+parser.add_argument("--ulvz-metadata", dest="ulvz_metadata", help="ULVZ radius heigh and dlnvs", nargs=3, type=float)
+
 
 args = parser.parse_args()
 
@@ -66,6 +74,20 @@ lat_s = trace.stats.evla
 lon_s = trace.stats.evlo
 dep_s = trace.stats.evde
 origin_time_event = trace.stats.event_origin_time
+
+# ++ select base on station name if asked ++
+if args.station_list:
+    stations_to_plot = open(args.station_list, "r").readlines()
+    stations_to_plot = [s.strip() for s in stations_to_plot]
+    to_remove = []
+    for tr in stream:
+        if tr.stats.station not in stations_to_plot:
+            to_remove.append(tr)
+    for trace in to_remove:
+        stream.remove(trace)
+    print(f"Select : {nb_traces  - stream.count()} traces removed based on station code")
+    nb_traces = stream.count()
+
 
 # ++ select on component ++
 stream = stream.select(component = args.component)
@@ -163,11 +185,6 @@ for tr in stream:
 
     
     tr.stats.azimuth *= 1000. # routine de plot en km
-        
-# generate colormap
-azimuths = [tr.stats.azimuth/1000. for tr in stream]
-az_min = min(azimuths)
-az_max = max(azimuths)
     
     # print(f"{station_latlon} : az = {tr.stats.azimuth}")
 # ++ select on azimuth ++
@@ -183,12 +200,14 @@ def select_azimuth(stream, a1, a2):
 
 if args.az_range[0] or args.az_range[1]:
     az1,az2 = args.az_range
-    az_min = az1 
-    az_max = az2
-
     assert(az1 < az2)
     stream = select_azimuth(stream, az1*1000, az2*1000)
     print(f"Select : {nb_traces  - stream.count()} traces removed based on azimuth criteria.")
+
+# generate colormap
+azimuths = [tr.stats.azimuth/1000. for tr in stream]
+az_min = min(azimuths)
+az_max = max(azimuths)
 
 # ++ initiate plot ++
 fig = plt.figure(tight_layout = True, figsize = (8,8))
@@ -215,11 +234,9 @@ stream.plot(
     orientation = "horizontal"
     )
 
-
 from custom_obspy_imaging_waveform import WaveformPlotting
 import matplotlib
 import numpy as np
-
 
 cNorm  = matplotlib.colors.Normalize(vmin=az_min, vmax=az_max)
 scalarMap = matplotlib.cm.ScalarMappable(norm=cNorm, cmap="cool")
@@ -261,7 +278,7 @@ waveform = WaveformPlotting(
 
 waveform.plot_waveform()
 
-plt.colorbar(scalarMap, label="Azimuth [°]", shrink=0.5)
+if args.colorbar: plt.colorbar(scalarMap, label="Azimuth [°]", shrink=0.5)
 
 switch_az_dist(stream)
 
@@ -285,6 +302,9 @@ if args.event_metadata:
 
 ax.set_ylabel("Azimuth [°]")
 ax.grid(True)
+
+
+
 
 # ++ identify phases by computing arrival time for the higher azimuth ++
 if args.phase_list:
@@ -333,7 +353,7 @@ if args.phase_list:
         
         # ax.plot(arrival.time-t_ref, 0.95*ax.get_ylim()[1], "v", ms=10, label = arrival.phase.name, markeredgecolor="k", color=c)
         ax.axvline(x=arrival.time-t_ref, color=c, label=arrival.phase.name)
-        ax.legend(title = f"Taup model : {model_name}", loc=2)
+        # ax.legend(title = f"Taup model : {model_name}", loc="upper right")
 
 
 # ++ write station codes ++
@@ -356,7 +376,13 @@ title = f"{prefix}{component_names[args.component]} component"
 
 title += f" - $\Delta\in$[{dmin:.0f}°,{dmax:.0f}°]"
 
-fig.suptitle(title)
+# fig.suptitle(title)
+
+
+# outputting station list
+with open("plotted_stations.txt", "w") as f:
+    for tr in stream:
+        f.write(tr.stats["station"] + "\n")
 
 
 

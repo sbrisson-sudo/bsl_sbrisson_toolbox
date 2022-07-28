@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
 
+"""
+
+Read the macromesh.dat file.
+
+Make checks.
+
+Can output the source information in an obspy compatible format.
+
+"""
+
 import numpy as np
 
 
@@ -478,13 +488,16 @@ def write_quakeML(config):
     Mrtp = source['Mrtp']
     coord = source['coordinates']
 
+    csem2Nm = 1e20 # csem take as input 10-20 Nm
+    csem2dyncm = 1e27 
+
     m_0 = 1.0 / np.sqrt(2.0) * np.sqrt(
-        Mrtp['m_rr'] ** 2 +
-        Mrtp['m_tt'] ** 2 +
-        Mrtp['m_pp'] ** 2 +
-        2.0 * Mrtp['m_rt'] ** 2 +
-        2.0 * Mrtp['m_rp'] ** 2 +
-        2.0 * Mrtp['m_tp'] ** 2)
+        (Mrtp['m_rr']*csem2dyncm) ** 2 +
+        (Mrtp['m_tt']*csem2dyncm) ** 2 +
+        (Mrtp['m_pp']*csem2dyncm) ** 2 +
+        2.0 * (Mrtp['m_rt']*csem2dyncm) ** 2 +
+        2.0 * (Mrtp['m_rp']*csem2dyncm) ** 2 +
+        2.0 * (Mrtp['m_tp']*csem2dyncm) ** 2)
     m_w = 2.0 / 3.0 * (np.log10(m_0) - 16.1)
         
     origin = Origin(
@@ -509,12 +522,12 @@ def write_quakeML(config):
     )
 
     tensor = Tensor(
-        m_rr = Mrtp["m_rr"],
-        m_pp = Mrtp["m_pp"],
-        m_tt = Mrtp["m_tt"],
-        m_rt = Mrtp["m_rt"],
-        m_rp = Mrtp["m_rp"],
-        m_tp = Mrtp["m_tp"]
+        m_rr = Mrtp["m_rr"]*csem2dyncm,
+        m_pp = Mrtp["m_pp"]*csem2dyncm,
+        m_tt = Mrtp["m_tt"]*csem2dyncm,
+        m_rt = Mrtp["m_rt"]*csem2dyncm,
+        m_rp = Mrtp["m_rp"]*csem2dyncm,
+        m_tp = Mrtp["m_tp"]*csem2dyncm
     )
     
     mt = MomentTensor(

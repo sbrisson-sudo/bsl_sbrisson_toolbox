@@ -2,21 +2,19 @@
 
 
 """
-Compute the mean frequency specttul of all the ASCII traces files found"""
+Compute the mean frequency spectrum of the traces in an obspy stream file 
+"""
 
 import numpy as np
 from numpy.fft import fft
 
 import matplotlib.pyplot as plt
-# plt.style.use("myStyle")
 
-import pandas as pd
-
-import re
-
-import sys, os
+import os
 
 import argparse 
+
+from obspy import read
 
 from tqdm import tqdm
 
@@ -32,36 +30,19 @@ f2 = 0.5
 def main():
     
     parser = argparse.ArgumentParser()
-    # parser.add_argument("trace_file", help="ascii trace file",type=str)
+    parser.add_argument("in_file", help="input stream file", type=str)
     parser.add_argument("-o", dest="out_file", help="output figure name", type=str, default="")
     args = parser.parse_args()
 
-    trace_files = []
-    nb_file_max = 500
-    i = 0
-
-    for f in os.listdir():
-
-        match = re.search(re_trace_file, f)
-
-        if match:
-            trace_files.append(f)
-
-            i += 1
-            if i > nb_file_max:
-                break
-
-            # print(match["comp"])
-            # print(match["nw"])
-            # print(match["stn"])
+    # loading data
+    st = read(args.in_file, format='PICKLE')
 
     # reading first trace
-    data = np.loadtxt(trace_files[0])
-    time = data[:,0]
-    signal = data[:,1]
+    time = st[0].times()
+    signal = st[0].data
 
     N = len(signal)
-    N = 18000
+    # N = 18000
 
     signalFFT = fft(signal)[:N//2]
 
@@ -77,12 +58,12 @@ def main():
     window = np.hanning(N)
 
     # loading data and computing FFT
-    ffts_signals = np.zeros((len(trace_files),Nfft))
+    ffts_signals = np.zeros((len(st),Nfft))
     print(">> Loading data and computing FFTs")
-    for i,f in tqdm(enumerate(trace_files), total=len(trace_files)):
+    for i,tr in tqdm(enumerate(st), total=len(st)):
 
-        data = np.loadtxt(f)
-        signal = window*data[:N,1]
+        data = tr.data
+        signal = window*data[:N]
 
         ffts_signals[i,:] = np.abs(fft(signal)[:N//2])
 

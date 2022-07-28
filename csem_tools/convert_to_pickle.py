@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 
+"""
+
+Convert the ASCII files produced by CSEM into a single obspy stream object
+Read the traces metadata from the receivers.dat and macromesh.dat files
+
+"""
+
 import numpy as np
 import pandas as pd
 from numpy import pi, cos, sin, arccos
@@ -27,6 +34,7 @@ parser.add_argument("-r", dest="receivers_file", help="path to the receivers.dat
 parser.add_argument("-m", dest="macromesh_file", help="path to the macromesh.dat file", type=str, default="macromesh.dat")
 parser.add_argument("-rinfo", dest="recepteurs_info_file", help="path to the recepteurs.info file", type=str)
 parser.add_argument("-d", dest="dist_range", help="distance bounds in degrees", nargs=2, type=float, default=[0.0, 180.0])
+parser.add_argument("--highpass", help="to apply a highpass filter, enter the corner period [s]", type=float)
 
 args = parser.parse_args()
 
@@ -138,36 +146,42 @@ for i,f in enumerate(files):
         netw = re_search.group(2)
         stat = re_search.group(3)
         
-        data = np.loadtxt(os.path.join(args.trace_dir, f))
-        
-        sr = 1/(data[1,0]-data[0,0]) # sampling rate in hertz
-        N = data.shape[0]
-        
-        lat_r,lon_r = stations_coord[stat]
-        Δ = locations2degrees(lat_r,lon_r,lat_s,lon_s)
-        
-        if d1 <= Δ and d2 >= Δ:
-        
-            # Fill header attributes
-            stats = {
-                'network': netw, 
-                'station': stat,
-                'coordinates': {'latitude':lat_r, 'longitude':lon_r},
-                'evla': lat_s,
-                'evlo': lon_s,
-                'evde': depth_km,
-                'distance': Δ,
-                'component': chan, 
-                'npts': N, 
-                'sampling_rate': sr,
-                'starttime' : starttime,
-                'event_origin_time' : starttime + t0_s
-                }
+        try:
+            lat_r,lon_r = stations_coord[stat]
 
-            traces.append(
-                # Trace(data = data[:,1], header = stats).slice(UTCDateTime()+t0_s)                
-                Trace(data = data[:,1], header = stats)
-            )
+            Δ = locations2degrees(lat_r,lon_r,lat_s,lon_s)
+
+            data = np.loadtxt(os.path.join(args.trace_dir, f))
+            sr = 1/(data[1,0]-data[0,0]) # sampling rate in hertz
+            N = data.shape[0]
+
+            if d1 <= Δ and d2 >= Δ:
+
+                # Fill header attributes
+                stats = {
+                    'network': netw, 
+                    'station': stat,
+                    'coordinates': {'latitude':lat_r, 'longitude':lon_r},
+                    'evla': lat_s,
+                    'evlo': lon_s,
+                    'evde': depth_km,
+                    'distance': Δ,
+                    'component': chan, 
+                    'npts': N, 
+                    'sampling_rate': sr,
+                    'starttime' : starttime,
+                    'event_origin_time' : starttime + t0_s
+                    }
+
+                traces.append(
+                    # Trace(data = data[:,1], header = stats).slice(UTCDateTime()+t0_s)                
+                    Trace(data = data[:,1], header = stats)
+                )
+                
+        except KeyError:
+            continue
+
+
             
 print()
             
@@ -177,6 +191,11 @@ if len(traces) == 0:
     exit()
         
 stream = Stream(traces = traces)
+
+# filtering 
+if args.highpass:
+    print(f">> Applying highpass filtering, 1/f = {args.highpass}")
+    stream.filter('highpass', freq=1/args.highpass)
 
 out_file = args.out_file + ".pkl"
 

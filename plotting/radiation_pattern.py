@@ -5,10 +5,11 @@ Created on Thu May 05 2022
 @author: Sylvain Brisson sylvain.brisson@ens.fr
 """
 
-from turtle import width
 import numpy as np
 import matplotlib.pyplot as plt
-from sqlalchemy import true
+
+plt.rcParams.update({'font.size': 20})
+
 
 # plt.style.use("publication")
 
@@ -118,6 +119,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument('event_file', type=str, help='obspy compatible event file')
+    parser.add_argument('--only', type=str, help='SH | SV | P')
     parser.add_argument('-o', dest="out_file", type=str,help='out figure name')
     parser.add_argument('-r', dest="rec_file", type=str,help='receivers.dat file path')
     parser.add_argument('-az', dest="azimuth", type=float,help='azimuth for vertical plots')
@@ -126,6 +128,11 @@ if __name__ == "__main__":
     
     events = read_events(args.event_file)
     event = events[0]
+
+
+    # getting if plotting SV SH P or only one
+    if args.only:
+        assert(args.only in ["SH", "SV", "P"])
     
     # getting moment tensor 
     fm = event.preferred_focal_mechanism() or event.focal_mechanisms[0]
@@ -137,19 +144,21 @@ if __name__ == "__main__":
     signs = [1, 1, 1, -1, 1, -1]
     indices = [1, 2, 0, 5, 3, 4]
     mt_ned = [sign * mt_rtp[ind] for sign, ind in zip(signs, indices)]
+
+    DYNCM2NM = 1e-7
     
     # init pyrocko moment tensor
     m = pmt.MomentTensor(
-        mnn = mt_ned[0], 
-        mee = mt_ned[1],
-        mdd = mt_ned[2], 
-        mne = mt_ned[3], 
-        mnd = mt_ned[4],    
-        med = mt_ned[5],
+        mnn = mt_ned[0]*DYNCM2NM, 
+        mee = mt_ned[1]*DYNCM2NM,
+        mdd = mt_ned[2]*DYNCM2NM, 
+        mne = mt_ned[3]*DYNCM2NM, 
+        mnd = mt_ned[4]*DYNCM2NM,    
+        med = mt_ned[5]*DYNCM2NM,
     )
-    
+
     print(m)
-    
+
     # the 2 nodal planes, given in (strike,dip,slip)
     np1, np2 = m.both_strike_dip_rake()
         
@@ -193,8 +202,10 @@ if __name__ == "__main__":
         stations["tk"] =  [
             (180. - model.get_ray_paths(0, d,phase_list=["S","Sdiff"])[0].takeoff_angle)*pi/180 for d in stations["dist"]
             ]
+
+        # print(stations)
         
-        print(f"mean takeoff angle = {stations['tk'].mean()}")
+        # print(f"mean takeoff angle = {stations['tk'].mean()}")
     
     # computing horizontal and vertical radiation pattern
     
@@ -205,94 +216,173 @@ if __name__ == "__main__":
     
     az = np.linspace(0.0, 2*pi, 100) # azimuth range
     tk = np.linspace(0.0, 2*pi, 100) # takeoff angle range
-    
-    rp_p_az  = np.abs(radiation_pattern_P(φ, δ, λ, az, np.pi/2))
-    rp_p_tk  = np.abs(radiation_pattern_P(φ, δ, λ, az_ref, tk))
-    rp_sh_az = np.abs(radiation_pattern_SH(φ, δ, λ, az, np.pi/2))
-    rp_sh_tk = np.abs(radiation_pattern_SH(φ, δ, λ, az_ref, tk))
-    rp_sv_az = np.abs(radiation_pattern_SV(φ, δ, λ, az, np.pi/2))
-    rp_sv_tk = np.abs(radiation_pattern_SV(φ, δ, λ, az_ref, tk))
-    
-    rp_max = max([rp.max() for rp in (rp_p_az, rp_p_tk, rp_sh_az, rp_sh_tk, rp_sv_az, rp_sv_tk)])
-    
-    rp_p_az  /= rp_max    
-    rp_p_tk  /= rp_max    
-    rp_sh_az /= rp_max        
-    rp_sh_tk /= rp_max        
-    rp_sv_az /= rp_max        
-    rp_sv_tk /= rp_max        
-        
-    # plotting
-    
-    fig, axes = plt.subplots(2, 3,tight_layout=True, subplot_kw={'projection':'polar'}, figsize=(14,8))
-    
-    origin = event.preferred_origin() or event.origins[0]
-    fig.suptitle(f"Radiation patterns - Event : {event.origins[0].time.date.strftime('%d %b %Y')}, Mw = {event.magnitudes[0].mag:1.1f}, ({origin.latitude:0>2.1f}°,{origin.longitude:0>3.1f}°)")
-    
-    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    c1, c2 = colors[:2]
-    
-    for ax in axes[0,:]: 
-        ax.set_yticks([]) 
-        ax.set_yticklabels([]) 
-        ax.set_theta_zero_location("N")
-        ax.set_theta_direction(-1)
-        ax.set_xticks([0, pi/2, pi, 3*pi/2]) 
-        ax.set_xticklabels(["N","E","S","W"])
-        ax.set_ylim([0., 1.1])
-        
-    for ax in axes[1,:]: 
-        ax.set_yticks([])
-        ax.set_yticklabels([])
-        ax.set_theta_zero_location("N")
-        ax.set_theta_direction(-1)
-        ax.set_xticks([0, pi/2, pi, 3*pi/2])
-        ax.set_xticklabels(["Up",f"az={az_ref*180/np.pi:.1f}°","Down",""])
-        ax.set_ylim([0., 1.1])
 
+    if not(args.only):
     
-
-    axes[0,0].set_title("P")
-    axes[0,0].text(-0.2,0.5, "Horizontal", rotation = 90, va = "center", transform=axes[0,0].transAxes)
-    axes[1,0].text(-0.2, 0.5, "Vertical", rotation = 90, va = "center", transform=axes[1,0].transAxes)
-    axes[0,0].plot(az, rp_p_az, c=c1)
-    axes[1,0].plot(tk, rp_p_tk, c=c2)
-
-    axes[0,1].set_title("SV")
-    axes[0,1].plot(az, rp_sv_az, c=c1)
-    axes[1,1].plot(tk, rp_sv_tk, c=c2)
-    
-    axes[0,2].set_title("SH")
-    axes[0,2].plot(az, rp_sh_az, c=c1)
-    axes[1,2].plot(tk, rp_sh_tk, c=c2)
-    
-    # add the receivers directions
-    
-    if args.rec_file:
+        rp_p_az  = np.abs(radiation_pattern_P(φ, δ, λ, az, np.pi/2))
+        rp_p_tk  = np.abs(radiation_pattern_P(φ, δ, λ, az_ref, tk))
+        rp_sh_az = np.abs(radiation_pattern_SH(φ, δ, λ, az, np.pi/2))
+        rp_sh_tk = np.abs(radiation_pattern_SH(φ, δ, λ, az_ref, tk))
+        rp_sv_az = np.abs(radiation_pattern_SV(φ, δ, λ, az, np.pi/2))
+        rp_sv_tk = np.abs(radiation_pattern_SV(φ, δ, λ, az_ref, tk))
         
-        # not using pd.hist because of normalisation issues
-        counts = stations["az"].value_counts(bins=nb_bins_az,normalize=True)
-        bins = counts.index
-        bins_center = [(b.left+b.right)/2 for b in bins]
-        width = bins[0].right - bins[0].left
+        rp_max = max([rp.max() for rp in (rp_p_az, rp_p_tk, rp_sh_az, rp_sh_tk, rp_sv_az, rp_sv_tk)])
         
-        size_of_bins_az = 0.8 / counts.values.max()
-        
-        for i in range(3):
-            # stations.hist(column = "az", ax = axes[0,i])
-            axes[0,i].bar(bins_center, counts.values*size_of_bins_az, alpha = 0.5, width=width, ec="k", color=c1)
+        rp_p_az  /= rp_max    
+        rp_p_tk  /= rp_max    
+        rp_sh_az /= rp_max        
+        rp_sh_tk /= rp_max        
+        rp_sv_az /= rp_max        
+        rp_sv_tk /= rp_max        
             
-        # plotting tk angles distribution
+        # plotting
+        
+        fig, axes = plt.subplots(2, 3,tight_layout=True, subplot_kw={'projection':'polar'}, figsize=(14,8))
+        
+        origin = event.preferred_origin() or event.origins[0]
+        # fig.suptitle(f"Radiation patterns - Event : {event.origins[0].time.date.strftime('%d %b %Y')}, Mw = {event.magnitudes[0].mag:1.1f}, ({origin.latitude:0>2.1f}°,{origin.longitude:0>3.1f}°)")
+        
+        # colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+        # c1, c2 = colors[:2]
 
-        counts = stations["tk"].value_counts(bins = nb_bins_tk,normalize=True)
-        bins = counts.index
-        bins_center = [(b.left+b.right)/2 for b in bins]
-        width = bins[0].right - bins[0].left
+        c1,c2 = '#636EFA', '#EF553B'
         
-        size_of_bins_tk = 0.8 / counts.values.max()
+        for ax in axes[0,:]: 
+            ax.set_yticks([]) 
+            ax.set_yticklabels([]) 
+            ax.set_theta_zero_location("N")
+            ax.set_theta_direction(-1)
+            ax.set_xticks([0, pi/2, pi, 3*pi/2]) 
+            ax.set_xticklabels(["N","E","S","W"])
+            ax.set_ylim([0., 1.1])
+            
+        for ax in axes[1,:]: 
+            ax.set_yticks([])
+            ax.set_yticklabels([])
+            ax.set_theta_zero_location("N")
+            ax.set_theta_direction(-1)
+            ax.set_xticks([0, pi/2, pi, 3*pi/2])
+            ax.set_xticklabels(["Up",f"az={az_ref*180/np.pi:.1f}°","Down",""])
+            ax.set_ylim([0., 1.1])
+
         
-        for i in range(3):
-            axes[1,i].bar(bins_center, counts.values*size_of_bins_tk, alpha = 0.5, width=width, ec="k", color=c2)
+
+        axes[0,0].set_title("P")
+        axes[0,0].text(-0.2,0.5, "Horizontal", rotation = 90, va = "center", transform=axes[0,0].transAxes)
+        axes[1,0].text(-0.2, 0.5, "Vertical", rotation = 90, va = "center", transform=axes[1,0].transAxes)
+        axes[0,0].plot(az, rp_p_az, c=c1)
+        axes[1,0].plot(tk, rp_p_tk, c=c2)
+
+        axes[0,1].set_title("SV")
+        axes[0,1].plot(az, rp_sv_az, c=c1)
+        axes[1,1].plot(tk, rp_sv_tk, c=c2)
+        
+        axes[0,2].set_title("SH")
+        axes[0,2].plot(az, rp_sh_az, c=c1)
+        axes[1,2].plot(tk, rp_sh_tk, c=c2)
+        
+        # add the receivers directions
+        
+        if args.rec_file:
+            
+            # not using pd.hist because of normalisation issues
+            counts = stations["az"].value_counts(bins=nb_bins_az,normalize=True)
+            bins = counts.index
+            bins_center = [(b.left+b.right)/2 for b in bins]
+            width = bins[0].right - bins[0].left
+            
+            size_of_bins_az = 0.8 / counts.values.max()
+            
+            for i in range(3):
+                # stations.hist(column = "az", ax = axes[0,i])
+                axes[0,i].bar(bins_center, counts.values*size_of_bins_az, alpha = 0.5, width=width, ec="k", color=c1)
+                
+            # plotting tk angles distribution
+
+            counts = stations["tk"].value_counts(bins = nb_bins_tk,normalize=True)
+            bins = counts.index
+            bins_center = [(b.left+b.right)/2 for b in bins]
+            width = bins[0].right - bins[0].left
+            
+            size_of_bins_tk = 0.8 / counts.values.max()
+            
+            for i in range(3):
+                axes[1,i].bar(bins_center, counts.values*size_of_bins_tk, alpha = 0.5, width=width, ec="k", color=c2)
+
+    else : 
+
+        to_plot = args.only
+
+        rp_fun = {
+            "P" : radiation_pattern_P,
+            "SV" : radiation_pattern_SV,
+            "SH" : radiation_pattern_SH
+        }[to_plot]
+
+        rp_az  = np.abs(rp_fun(φ, δ, λ, az, np.pi/2))
+        rp_tk  = np.abs(rp_fun(φ, δ, λ, az_ref, tk))
+        
+        rp_max = max([rp.max() for rp in (rp_az, rp_tk)])
+        
+        rp_az  /= rp_max    
+        rp_tk  /= rp_max    
+
+        # plotting
+        
+        fig, (ax1,ax2) = plt.subplots(1, 2,tight_layout=True, subplot_kw={'projection':'polar'}, figsize=(10,5))
+        
+        origin = event.preferred_origin() or event.origins[0]
+        # fig.suptitle(f"Radiation pattern {args.only} - Event : {event.origins[0].time.date.strftime('%d %b %Y')}, Mw = {event.magnitudes[0].mag:1.1f}, ({origin.latitude:0>2.1f}°,{origin.longitude:0>3.1f}°)")
+        
+        # colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+        # c1, c2 = colors[:2]
+
+        c1,c2 = '#636EFA', '#EF553B'
+        
+        
+        ax1.set_yticks([]) 
+        ax1.set_yticklabels([]) 
+        ax1.set_theta_zero_location("N")
+        ax1.set_theta_direction(-1)
+        ax1.set_xticks([0, pi/2, pi, 3*pi/2]) 
+        ax1.set_xticklabels(["N","E","S","W"])
+        ax1.set_ylim([0., 1.1])
+            
+        ax2.set_yticks([])
+        ax2.set_yticklabels([])
+        ax2.set_theta_zero_location("N")
+        ax2.set_theta_direction(-1)
+        ax2.set_xticks([0, pi/2, pi, 3*pi/2])
+        ax2.set_xticklabels(["Up",f"az={az_ref*180/np.pi:.1f}°","Down",""])
+        ax2.set_ylim([0., 1.1])
+
+        ax1.plot(az, rp_az, c=c1)
+        ax2.plot(tk, rp_tk, c=c2)
+        
+        # add the receivers directions
+        
+        if args.rec_file:
+            
+            # not using pd.hist because of normalisation issues
+            counts = stations["az"].value_counts(bins=nb_bins_az,normalize=True)
+            bins = counts.index
+            bins_center = [(b.left+b.right)/2 for b in bins]
+            width = bins[0].right - bins[0].left
+            
+            size_of_bins_az = 0.8 / counts.values.max()
+
+            ax1.bar(bins_center, counts.values*size_of_bins_az, alpha = 0.5, width=width, ec="k", color=c1)
+                
+            # plotting tk angles distribution
+
+            counts = stations["tk"].value_counts(bins = nb_bins_tk,normalize=True)
+            bins = counts.index
+            bins_center = [(b.left+b.right)/2 for b in bins]
+            width = bins[0].right - bins[0].left
+            
+            size_of_bins_tk = 0.8 / counts.values.max()
+            
+            ax2.bar(bins_center, counts.values*size_of_bins_tk, alpha = 0.5, width=width, ec="k", color=c2)
         
     # showing / saving
     if args.out_file:

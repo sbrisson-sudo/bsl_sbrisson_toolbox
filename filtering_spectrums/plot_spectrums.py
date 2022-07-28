@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+"""
+Plot different spectrums with associated labels, computed by the mean_spectrum routines
+"""
+
 
 import numpy as np 
 import matplotlib.pyplot as plt

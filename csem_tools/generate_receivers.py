@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
-# -------------------
-# program to generate receivers at certain distances and azimuth from the source (relatively to the Norh pole)
-# the source is at the equator (lon = 0.0, colat = 90.)
-# the azimuth are the angle (source_northpole northpole_receiver)
-# -------------------
-
+"""
+Generate receivers at certain distances and azimuth from the source (relatively to the Norh pole)
+the source is at the equator (lon = 0.0, colat = 90.)
+the azimuth are the angle (source_northpole northpole_receiver)
+"""
 
 import numpy as np
 from numpy import pi,cos,sin,arccos
@@ -15,8 +14,8 @@ warnings.filterwarnings("error")
 
 # -- configuration
 
-dist_deg = np.linspace(95,110,15)    # distance in degrees
-az_deg = np.linspace(-10, 10,25)      # azimuth in degrees
+dist_deg = np.linspace(85,130,10)    # distance in degrees
+az_deg = np.linspace(-30, 30,30)      # azimuth in degrees
 
 # --
 
@@ -74,6 +73,8 @@ stations = dict(zip(generate_station_names(N_dist*N_az), zip(lat_deg,lon_deg)))
 # saving it into receivers.dat file
 
 nw_code = "SY" # for synthetics
+
+print("Stations list written in receivers.dat")
 
 with open("receivers.dat", 'w') as out:
     header = ["Number of stations is:",len(lon_deg),"nw stn lat lon:"]
